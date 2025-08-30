@@ -33,23 +33,6 @@
       <input name="candidate_limit" type="number" min="1" placeholder="e.g. 4">
       <button class="btn primary" type="submit">Schedule</button>
     </form>
-    <script>
-  // Convert datetime-local values (local time) to ISO UTC before submit
-  const schedForm = document.querySelector('form[action="{{ url_for("schedule_election") }}"]');
-  if (schedForm) {
-    schedForm.addEventListener('submit', function () {
-      function toUtc(val) {
-        const d = new Date(val);
-        return isNaN(d) ? val : d.toISOString();
-      }
-      const st = this.querySelector('input[name="start_time"]');
-      const et = this.querySelector('input[name="end_time"]');
-      if (st && st.value) st.value = toUtc(st.value);
-      if (et && et.value) et.value = toUtc(et.value);
-    });
-  }
-</script>
-    
   </div>
 
   <div class="card">
