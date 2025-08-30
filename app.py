@@ -286,8 +286,20 @@ def schedule_election():
     title = request.form.get("title","").strip()
     year = request.form.get("year","").strip()
     category = request.form.get("category","").strip()
-    start_time = normalize_local(request.form.get("start_time"))
-    end_time   = normalize_local(request.form.get("end_time"))
+    from datetime import timedelta
+    tz_offset = int(request.form.get("tz_offset", "0"))
+    start_raw = (request.form.get("start_time") or "").strip()
+    end_raw   = (request.form.get("end_time") or "").strip()
+    def to_utc_iso(local_str):
+        if not local_str:
+            return ""
+        if len(local_str) == 16:
+            local_str = local_str + ":00"
+        dt = datetime.fromisoformat(local_str)
+        utc_dt = dt - timedelta(minutes=tz_offset)
+        return utc_dt.replace(tzinfo=timezone.utc).isoformat()
+    start_time = to_utc_iso(start_raw)
+    end_time   = to_utc_iso(end_raw)
     cand_limit = request.form.get("candidate_limit","").strip()
 
     if not title or not year or not category or not start_time or not end_time:
