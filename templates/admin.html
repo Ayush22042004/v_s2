@@ -73,4 +73,71 @@
     </ul>
   </div>
 </div>
+
+  <div class="card">
+    <h3>Your Elections</h3>
+    <ul>
+      {% for e in elections %}
+        <li>
+          <strong>{{ e.title or e.category }}</strong> • {{ e.category }} • {{ e.year or "YYYY" }}
+          <br>
+          <span class="muted">
+            <span class="utc-time">{{ e.start_time }}</span> → <span class="utc-time">{{ e.end_time }}</span>
+          </span>
+          <span class="badge" data-start="{{ e.start_time }}" data-end="{{ e.end_time }}"></span>
+        </li>
+      {% else %}
+        <li class="muted">No elections yet.</li>
+      {% endfor %}
+    </ul>
+  </div>
+</div>
+<script>
+  // Prefill Start = now+1 minute, End = start+10 minutes
+  function pad(n){return (n<10?'0':'')+n;}
+  function toLocalInputValue(d){
+    return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate()) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
+  }
+  function setDefaultTimes(){
+    const startEl = document.querySelector('input[name="start_time"]');
+    const endEl = document.querySelector('input[name="end_time"]');
+    if(!startEl || !endEl) return;
+    if(!startEl.value || !endEl.value){
+      const now = new Date();
+      now.setSeconds(0,0);
+      now.setMinutes(now.getMinutes()+1);
+      const end = new Date(now.getTime() + 10*60000);
+      startEl.value = toLocalInputValue(now);
+      endEl.value = toLocalInputValue(end);
+      startEl.min = toLocalInputValue(now);
+      endEl.min = toLocalInputValue(now);
+    }
+  }
+  // Badges: show Active/Upcoming/Ended based on UTC timestamps stored in data-*
+  function updateBadges(){
+    const now = new Date();
+    document.querySelectorAll('.badge[data-start][data-end]').forEach(function(b){
+      const s = new Date(b.dataset.start);
+      const t = new Date(b.dataset.end);
+      b.classList.remove('active','upcoming','ended');
+      if(isNaN(s) || isNaN(t)){ b.textContent=''; return; }
+      if(s <= now && now <= t){
+        b.textContent = 'Active now';
+        b.classList.add('active');
+      }else if(now < s){
+        b.textContent = 'Upcoming';
+        b.classList.add('upcoming');
+      }else{
+        b.textContent = 'Ended';
+        b.classList.add('ended');
+      }
+    });
+  }
+  document.addEventListener('DOMContentLoaded', function(){
+    setDefaultTimes();
+    updateBadges();
+    setInterval(updateBadges, 30000); // refresh every 30s
+  });
+</script>
 {% endblock %}
+
