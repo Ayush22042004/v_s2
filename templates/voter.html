@@ -6,7 +6,7 @@
 {% else %}
   <div class="card">
     <h3>{{ election.title or election.category }} ({{ election.category }})</h3>
-    <p class="muted">{{ election.start_time }} → {{ election.end_time }}</p>
+    <p class="muted"><span class="utc-time">{{ election.start_time }}</span> → <span class="utc-time">{{ election.end_time }}</span></p>
     {% if voted %}
       <p class="muted">You have already voted for this election.</p>
     {% else %}

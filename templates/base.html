@@ -30,5 +30,18 @@
     {% endwith %}
     {% block content %}{% endblock %}
   </main>
+  <script>
+    (function(){
+      function asLocal(s){
+        var d = new Date(s);
+        if (isNaN(d)) return s;
+        return d.toLocaleString();
+      }
+      document.querySelectorAll('.utc-time').forEach(function(el){
+        var text = el.textContent.trim();
+        if (text) { el.textContent = asLocal(text); }
+      });
+    })();
+  </script>
 </body>
 </html>
