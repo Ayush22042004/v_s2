@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Admin Dashboard</h2>
+<div class="grid">
+  <div class="card">
+    <h3>Schedule Election</h3>
+    <form method="POST" action="{{ url_for('schedule_election') }}">
+      <input name="title" placeholder="Election Title" required>
+      <select name="year" required>
+        {% for y in range(2023, 2031) %}
+          <option value="{{ y }}" {% if y==2025 %}selected{% endif %}>{{ y }}</option>
+        {% endfor %}
+      </select>
+      <select name="category" required>
+        <option value="" disabled>Category</option>
+        <option selected>General</option>
+        <option>Technical</option>
+        <option>Cultural</option>
+      </select>
+      <label>Start</label>
+      <input name="start_time" type="datetime-local" required>
+      <label>End</label>
+      <input name="end_time" type="datetime-local" required>
+      <label>Candidate limit (optional)</label>
+      <input name="candidate_limit" type="number" min="1" placeholder="e.g. 4">
+      <button class="btn primary" type="submit">Schedule</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h3>Add Candidate</h3>
+    {% if elections|length == 0 %}
+      <p class="muted">No elections yet. Please schedule an election first.</p>
+    {% else %}
+    <form method="POST" action="{{ url_for('add_candidate') }}" enctype="multipart/form-data">
+      <input name="name" placeholder="Candidate name" required>
+      <select name="category" required>
+        <option value="" disabled selected>Choose category</option>
+        <option>General</option>
+        <option>Technical</option>
+        <option>Cultural</option>
+      </select>
+      <label>Election</label>
+      <select name="election_id" required>
+        <option value="" disabled selected>Select your election</option>
+        {% for e in elections %}
+          <option value="{{ e.id }}">{{ e.title or e.category }} • {{ e.year or "YYYY" }}</option>
+        {% endfor %}
+      </select>
+      <input type="file" name="photo" accept="image/*">
+      <button class="btn primary" type="submit">Add Candidate</button>
+    </form>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h3>Existing Candidates</h3>
+    <p class="muted">(Shows only your elections)</p>
+    <ul>
+      {% for c in candidates %}
+        <li>{{ c.name }} — <span class="muted">{{ c.category }}</span> • <span class="muted">{{ c.e_title or 'No election' }}</span></li>
+      {% else %}
+        <li class="muted">No candidates yet.</li>
+      {% endfor %}
+    </ul>
+  </div>
+</div>
+{% endblock %}
