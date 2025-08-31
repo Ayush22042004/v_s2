@@ -83,31 +83,14 @@ def ensure_schema():
         FOREIGN KEY (election_id) REFERENCES elections(id)
     )
     """)
-
-    cols = {r[1] for r in query("PRAGMA table_info(elections)")}
-    if "title" not in cols:
-        db.execute("ALTER TABLE elections ADD COLUMN title TEXT")
-    if "year" not in cols:
-        db.execute("ALTER TABLE elections ADD COLUMN year INTEGER")
-    if "created_by" not in cols:
-        db.execute("ALTER TABLE elections ADD COLUMN created_by INTEGER")
-    if "candidate_limit" not in cols:
-        db.execute("ALTER TABLE elections ADD COLUMN candidate_limit INTEGER")
-
-    c_cols = {r[1] for r in query("PRAGMA table_info(candidates)")}
-    if "election_id" not in c_cols:
-        db.execute("ALTER TABLE candidates ADD COLUMN election_id INTEGER")
-
     db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_votes_unique ON votes(voter_id, election_id)")
     db.commit()
 
 def seed_admin():
     admin = query("SELECT id FROM users WHERE role='admin' LIMIT 1", one=True)
     if not admin:
-        execute(
-            "INSERT INTO users (name, email, username, password, role) VALUES (?,?,?,?,?)",
-            ("Admin", "admin@example.com", "admin", generate_password_hash("admin123"), "admin")
-        )
+        execute("INSERT INTO users (name,email,username,password,role) VALUES (?,?,?,?,?)",
+                ("Admin","admin@example.com","admin", generate_password_hash("admin123"), "admin"))
 
 with app.app_context():
     ensure_schema()
@@ -156,20 +139,15 @@ def signup():
         username = request.form.get("username","").strip().lower()
         password = request.form.get("password","")
         id_number = request.form.get("id_number","").strip()
-
         if not name or not username or not password or not id_number:
-            flash("All fields except email are required.", "error")
-            return redirect(url_for("signup"))
-
+            flash("All fields except email are required.", "error"); return redirect(url_for("signup"))
         if query("SELECT 1 FROM users WHERE lower(username)=?", (username,), one=True):
             flash("Username already taken.", "error"); return redirect(url_for("signup"))
         if email and query("SELECT 1 FROM users WHERE lower(email)=?", (email.lower(),), one=True):
             flash("Email already registered.", "error"); return redirect(url_for("signup"))
-
         execute("INSERT INTO users (name,email,username,password,role,id_number) VALUES (?,?,?,?,?,?)",
                 (name, email.lower() if email else None, username, generate_password_hash(password), "voter", id_number))
-        flash("Account created. Please login.", "ok")
-        return redirect(url_for("login"))
+        flash("Account created. Please login.", "ok"); return redirect(url_for("login"))
     return render_template("signup.html")
 
 @app.route("/login", methods=["GET","POST"])
@@ -179,10 +157,8 @@ def login():
         password = request.form.get("password","")
         user = query("SELECT * FROM users WHERE lower(username)=?", (username,), one=True)
         if user and check_password_hash(user["password"], password):
-            session["user_id"] = user["id"]
-            session["role"] = user["role"]
-            flash("Welcome back!", "ok")
-            return redirect(url_for("index"))
+            session["user_id"] = user["id"]; session["role"]=user["role"]
+            flash("Welcome back!", "ok"); return redirect(url_for("index"))
         flash("Invalid credentials.", "error")
     return render_template("login.html")
 
@@ -211,34 +187,25 @@ def add_candidate():
     category = request.form.get("category","").strip() or "General"
     election_id = request.form.get("election_id","").strip()
     if not name or not election_id:
-        flash("Candidate name and election are required.", "error")
-        return redirect(url_for("admin"))
+        flash("Candidate name and election are required.", "error"); return redirect(url_for("admin"))
     try:
         election_id = int(election_id)
     except ValueError:
-        flash("Invalid election selected.", "error")
-        return redirect(url_for("admin"))
-
+        flash("Invalid election selected.", "error"); return redirect(url_for("admin"))
     e = query("SELECT id, candidate_limit, created_by FROM elections WHERE id=?", (election_id,), one=True)
-    if not e:
-        flash("Selected election does not exist.", "error"); return redirect(url_for("admin"))
+    if not e: flash("Selected election does not exist.", "error"); return redirect(url_for("admin"))
     if e["created_by"] and e["created_by"] != session.get("user_id"):
         flash("You can only add candidates to your own elections.", "error"); return redirect(url_for("admin"))
-
     if e["candidate_limit"] is not None:
         cnt = query("SELECT COUNT(*) AS c FROM candidates WHERE election_id=?", (election_id,), one=True)["c"]
         if cnt >= e["candidate_limit"]:
             flash("Candidate limit reached for this election.", "warn"); return redirect(url_for("admin"))
-
-    photo_path = None
-    f = request.files.get("photo")
+    photo_path=None; f=request.files.get("photo")
     if f and f.filename:
         filename = secure_filename(f.filename)
         uploads_dir = os.path.join(APP_DIR, "static", "uploads"); os.makedirs(uploads_dir, exist_ok=True)
-        full = os.path.join(uploads_dir, filename); f.save(full)
-        photo_path = f"uploads/{filename}"
-
-    execute("INSERT INTO candidates (name, category, photo, election_id) VALUES (?,?,?,?)",
+        f.save(os.path.join(uploads_dir, filename)); photo_path=f"uploads/{filename}"
+    execute("INSERT INTO candidates (name,category,photo,election_id) VALUES (?,?,?,?)",
             (name, category, photo_path, election_id))
     flash("Candidate added to election.", "ok"); return redirect(url_for("admin"))
 
@@ -248,40 +215,30 @@ def schedule_election():
     title = request.form.get("title","").strip()
     year = request.form.get("year","").strip()
     category = request.form.get("category","").strip()
-    tz_offset = int(request.form.get("tz_offset","0"))
+    tz_offset = int(request.form.get("tz_offset","0"))  # minutes from UTC to local (JS getTimezoneOffset)
     start_raw = (request.form.get("start_time") or "").strip()
     end_raw   = (request.form.get("end_time") or "").strip()
-
     if not title or not year or not category or not start_raw or not end_raw:
-        flash("All fields are required for scheduling.", "error")
-        return redirect(url_for("admin"))
-
-    # datetime-local yields YYYY-MM-DDTHH:MM; normalize to seconds then shift to UTC using browser offset
+        flash("All fields are required for scheduling.", "error"); return redirect(url_for("admin"))
     def to_utc_iso(local_str):
-        if len(local_str) == 16:
-            local_str = local_str + ":00"
-        dt = datetime.fromisoformat(local_str)  # NAIVE local wall time
+        if len(local_str)==16: local_str += ":00"
+        dt = datetime.fromisoformat(local_str)  # naive local wall time
+        # JS getTimezoneOffset() is minutes DIFFERENCE from UTC to local (UTC - local)
+        # Correct conversion: UTC = local + offset_minutes
         utc_dt = dt - timedelta(minutes=tz_offset)
         return utc_dt.replace(tzinfo=timezone.utc).isoformat()
-
-    start_time = to_utc_iso(start_raw)
-    end_time   = to_utc_iso(end_raw)
-
+    start_time = to_utc_iso(start_raw); end_time = to_utc_iso(end_raw)
     sdt = parse_iso(start_time); edt = parse_iso(end_time)
     if not sdt or not edt or edt <= sdt:
-        flash("Invalid time window. End must be after start.", "error")
-        return redirect(url_for("admin"))
-
+        flash("Invalid time window. End must be after start.", "error"); return redirect(url_for("admin"))
     created_by = session.get("user_id")
     cand_limit = request.form.get("candidate_limit","").strip()
     try:
         cand_limit_val = int(cand_limit) if cand_limit else None
-        if cand_limit_val is not None and cand_limit_val < 1:
-            raise ValueError
+        if cand_limit_val is not None and cand_limit_val < 1: raise ValueError
     except ValueError:
         flash("Candidate limit must be a positive number.", "error"); return redirect(url_for("admin"))
-
-    execute("INSERT INTO elections (title, year, category, start_time, end_time, created_by, candidate_limit) VALUES (?,?,?,?,?,?,?)",
+    execute("INSERT INTO elections (title,year,category,start_time,end_time,created_by,candidate_limit) VALUES (?,?,?,?,?,?,?)",
             (title, int(year), category, start_time, end_time, created_by, cand_limit_val))
     flash("Election scheduled.", "ok"); return redirect(url_for("admin"))
 
@@ -309,27 +266,20 @@ def voter_panel():
 @login_required(role="voter")
 def vote():
     try:
-        election_id = int(request.form.get("election_id", "0"))
-        candidate_id = int(request.form.get("candidate_id", "0"))
+        election_id = int(request.form.get("election_id","0"))
+        candidate_id = int(request.form.get("candidate_id","0"))
     except ValueError:
         flash("Invalid vote submission.", "error"); return redirect(url_for("voter_panel"))
-
     e = query("SELECT * FROM elections WHERE id=?", (election_id,), one=True)
-    if not e:
-        flash("No election is scheduled right now.", "warn"); return redirect(url_for("voter_panel"))
-
+    if not e: flash("No election is scheduled right now.", "warn"); return redirect(url_for("voter_panel"))
     now = now_utc(); s = parse_iso(e["start_time"]); t = parse_iso(e["end_time"])
     if not s or not t or not (s <= now <= t):
         flash("This election is not active.", "warn"); return redirect(url_for("voter_panel"))
-
     if query("SELECT 1 FROM votes WHERE voter_id=? AND election_id=?", (session["user_id"], election_id), one=True):
         flash("You have already voted in this election.", "warn"); return redirect(url_for("voter_panel"))
-
     c = query("SELECT * FROM candidates WHERE id=? AND election_id=?", (candidate_id, election_id), one=True)
-    if not c:
-        flash("Invalid candidate selection.", "error"); return redirect(url_for("voter_panel"))
-
-    execute("INSERT INTO votes (voter_id, candidate_id, election_id, timestamp) VALUES (?,?,?,?)",
+    if not c: flash("Invalid candidate selection.", "error"); return redirect(url_for("voter_panel"))
+    execute("INSERT INTO votes (voter_id,candidate_id,election_id,timestamp) VALUES (?,?,?,?)",
             (session["user_id"], candidate_id, election_id, now.isoformat()))
     flash("Vote recorded. Thank you!", "ok"); return redirect(url_for("voter_panel"))
 
@@ -338,8 +288,7 @@ def vote():
 def results():
     election_id = request.args.get("election_id")
     e = query("SELECT * FROM elections WHERE id=?", (election_id,), one=True) if election_id else current_active_election()
-    if not e:
-        flash("No election selected/active.", "warn"); return redirect(url_for("admin"))
+    if not e: flash("No election selected/active.", "warn"); return redirect(url_for("admin"))
     rows = query("""
         SELECT c.name, COUNT(v.id) as votes
         FROM candidates c
