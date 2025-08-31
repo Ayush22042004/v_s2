@@ -218,6 +218,8 @@ def schedule_election():
     tz_offset = int(request.form.get("tz_offset","0"))  # minutes from UTC to local (JS getTimezoneOffset)
     start_raw = (request.form.get("start_time") or "").strip()
     end_raw   = (request.form.get("end_time") or "").strip()
+    start_time_utc = (request.form.get('start_time_utc') or '').strip()
+    end_time_utc   = (request.form.get('end_time_utc') or '').strip()
     if not title or not year or not category or not start_raw or not end_raw:
         flash("All fields are required for scheduling.", "error"); return redirect(url_for("admin"))
     def to_utc_iso(local_str):

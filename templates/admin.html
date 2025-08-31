@@ -4,7 +4,9 @@
 <div class="grid">
   <div class="card">
     <h3>Schedule Election</h3>
-    <form method="POST" action="{{ url_for('schedule_election') }}">
+    <form id="scheduleForm" method="POST" action="{{ url_for('schedule_election') }}">
+      <input type="hidden" name="start_time_utc">
+      <input type="hidden" name="end_time_utc">
       <input type="hidden" name="tz_offset" value="0">
       <script>
         document.addEventListener("DOMContentLoaded", function(){
@@ -120,3 +122,27 @@
   });
 </script>
 {% endblock %}
+
+<script>
+  function toUTCISO(localValue){
+    if(!localValue) return "";
+    var d = new Date(localValue); // interpret as local wall time
+    if (isNaN(d)) return "";
+    return d.toISOString(); // UTC ISO string
+  }
+  document.addEventListener('DOMContentLoaded', function(){
+    var form = document.getElementById('scheduleForm');
+    if(form){
+      form.addEventListener('submit', function(){
+        var s = document.querySelector('input[name="start_time"]');
+        var e = document.querySelector('input[name="end_time"]');
+        var su = document.querySelector('input[name="start_time_utc"]');
+        var eu = document.querySelector('input[name="end_time_utc"]');
+        if(s && e && su && eu){
+          su.value = toUTCISO(s.value);
+          eu.value = toUTCISO(e.value);
+        }
+      });
+    }
+  });
+</script>
