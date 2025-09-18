@@ -118,6 +118,8 @@ def parse_iso(s):
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
         return dt
+    except Exception:
+        return None
 
 
 def classify_elections(rows):
@@ -126,12 +128,13 @@ def classify_elections(rows):
     for e in rows:
         s = parse_iso(e["start_time"]); t = parse_iso(e["end_time"])
         if s and t:
-            if s <= now <= t: ongoing.append(e)
-            elif now < s: scheduled.append(e)
-            else: ended.append(e)
+            if s <= now <= t:
+                ongoing.append(e)
+            elif now < s:
+                scheduled.append(e)
+            else:
+                ended.append(e)
     return ongoing, scheduled, ended
-    except Exception:
-        return None
 
 def now_utc():
     return datetime.now(timezone.utc)
@@ -266,6 +269,21 @@ def current_active_election():
             return e
     return None
 
+
+def classify_elections(rows):
+    now = now_utc()
+    ongoing, scheduled, ended = [], [], []
+    for e in rows:
+        s = parse_iso(e["start_time"]); t = parse_iso(e["end_time"])
+        if s and t:
+            if s <= now <= t:
+                ongoing.append(e)
+            elif now < s:
+                scheduled.append(e)
+            else:
+                ended.append(e)
+    return ongoing, scheduled, ended
+
 @app.route("/voter")
 @login_required(role="voter")
 def voter_panel():
@@ -313,45 +331,6 @@ def results():
     """, (e["id"], e["id"]))
     results = [{"name": r["name"], "votes": r["votes"]} for r in rows]
     return render_template("result.html", election=e, results=results, elections=query("SELECT * FROM elections ORDER BY start_time DESC"))
-
-
-@app.route("/results_excel/<int:eid>")
-@login_required()
-def results_excel(eid):
-    import io
-    from openpyxl import Workbook
-    e = query("SELECT * FROM elections WHERE id=?", (eid,), one=True)
-    if not e:
-        flash("Election not found", "error")
-        return redirect(url_for("admin"))
-    rows = query("""
-        SELECT c.name, COUNT(v.id) as votes
-        FROM candidates c
-        LEFT JOIN votes v ON v.candidate_id=c.id AND v.election_id=?
-        WHERE c.election_id=?
-        GROUP BY c.id
-        ORDER BY votes DESC, c.name ASC
-    """, (eid, eid))
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "Results"
-    ws.append(["Election", e["title"] or e["category"]])
-    ws.append(["Start", e["start_time"], "End", e["end_time"]])
-    ws.append([])
-    ws.append(["Candidate", "Votes"])
-    for r in rows:
-        ws.append([r["name"], r["votes"]])
-    stream = io.BytesIO()
-    wb.save(stream)
-    stream.seek(0)
-    return (
-        stream.read(),
-        200,
-        {
-            "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            "Content-Disposition": f"attachment; filename=results_{eid}.xlsx",
-        },
-    )
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
