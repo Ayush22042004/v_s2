@@ -1,27 +1,36 @@
 {% extends "base.html" %}
 {% block content %}
 <h2>Voter Panel</h2>
-{% if not election %}
-  <div class="card"><p>No active election right now. Please wait for admin to schedule.</p></div>
-{% else %}
-  <div class="card">
-    <h3>{{ election.title or election.category }} ({{ election.category }})</h3>
-    <p class="muted">{{ election.start_time|istfmt }} → {{ election.end_time|istfmt }}</p>
-    {% if voted %}
-      <p class="muted">You have already voted for this election.</p>
-    {% else %}
-      <form method="POST" action="{{ url_for('vote') }}">
-        <input type="hidden" name="election_id" value="{{ election.id }}">
-        <label>Choose Candidate</label>
-        <select name="candidate_id" required>
-          <option value="" disabled selected>Select</option>
-          {% for c in candidates %}
-            <option value="{{ c.id }}">{{ c.name }}</option>
-          {% endfor %}
-        </select>
-        <button class="btn primary" type="submit">Submit Vote</button>
-      </form>
-    {% endif %}
+<div class="kanban">
+  <div>
+    <h3>Ongoing</h3>
+    <ul>{% for e in ongoing %}
+      <li><strong>{{ e.title or e.category }}</strong> • {{ e.start_time|istfmt }} → {{ e.end_time|istfmt }}
+        <form method="POST" action="{{ url_for('vote') }}">
+          <input type="hidden" name="election_id" value="{{ e.id }}">
+          <label>Choose Candidate</label>
+          <select name="candidate_id" required>
+            {% for c in candidates if c.election_id == e.id %}
+              <option value="{{ c.id }}">{{ c.name }}</option>
+            {% endfor %}
+          </select>
+          <button class="btn primary" type="submit">Vote</button>
+        </form>
+      </li>
+    {% else %}<li class="muted">No ongoing election</li>{% endfor %}</ul>
   </div>
-{% endif %}
+  <div>
+    <h3>Upcoming</h3>
+    <ul>{% for e in scheduled %}
+      <li>{{ e.title or e.category }} • {{ e.start_time|istfmt }}</li>
+    {% else %}<li class="muted">None</li>{% endfor %}</ul>
+  </div>
+  <div>
+    <h3>Ended</h3>
+    <ul>{% for e in ended %}
+      <li>{{ e.title or e.category }} • {{ e.start_time|istfmt }} → {{ e.end_time|istfmt }}
+        <a href="{{ url_for('results', election_id=e.id) }}">View Results</a></li>
+    {% else %}<li class="muted">None</li>{% endfor %}</ul>
+  </div>
+</div>
 {% endblock %}

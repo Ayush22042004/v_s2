@@ -19,7 +19,7 @@
     <ul>
       {% for e in elections %}
         <li><strong>{{ e.title or e.category }}</strong> • {{ e.category }} • {{ e.year or "YYYY" }}<br>
-            <span class="muted">{{ e.start_time|istfmt }} → {{ e.end_time|istfmt }}</span></li>
+            <span class="muted"><span class="utc-time">{{ e.start_time }}</span> → <span class="utc-time">{{ e.end_time }}</span></span></li>
       {% else %}
         <li class="muted">No elections scheduled yet.</li>
       {% endfor %}

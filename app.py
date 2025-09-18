@@ -312,6 +312,6 @@ def istfmt(value):
     try:
         dt = parse_iso(value)
         dt = to_ist(dt)
-        return dt.strftime("%d %b %Y, %I:%M %p") + " IST"
+        return dt.strftime("%d %b %Y, %I:%M %p IST")
     except Exception:
         return value
