@@ -267,6 +267,9 @@ def to_ist(dt):
     except Exception:
         return dt
 
+voted = bool(query("SELECT 1 FROM votes WHERE voter_id=? AND election_id=?", (session["user_id"], e["id"]), one=True))
+    candidates = query("SELECT * FROM candidates WHERE election_id=?", (e["id"],))
+    return render_template("voter.html", election=e, voted=voted, candidates=candidates)
 
 @app.route("/vote", methods=["POST"])
 @login_required(role="voter")
