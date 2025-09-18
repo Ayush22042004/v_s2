@@ -2,8 +2,6 @@
 import os
 import sqlite3
 from datetime import datetime, timezone, timedelta
-from zoneinfo import ZoneInfo
-IST = ZoneInfo('Asia/Kolkata')
 from functools import wraps
 
 from flask import Flask, render_template, request, redirect, url_for, flash, session
@@ -120,6 +118,18 @@ def parse_iso(s):
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
         return dt
+
+
+def classify_elections(rows):
+    now = now_utc()
+    ongoing, scheduled, ended = [], [], []
+    for e in rows:
+        s = parse_iso(e["start_time"]); t = parse_iso(e["end_time"])
+        if s and t:
+            if s <= now <= t: ongoing.append(e)
+            elif now < s: scheduled.append(e)
+            else: ended.append(e)
+    return ongoing, scheduled, ended
     except Exception:
         return None
 
@@ -211,53 +221,19 @@ def add_candidate():
             (name, category, photo_path, election_id))
     flash("Candidate added to election.", "ok"); return redirect(url_for("admin"))
 
-
 @app.route("/schedule_election", methods=["POST"])
 @login_required(role="admin")
 def schedule_election():
-    title = request.form.get("title", "").strip()
-    year = request.form.get("year", "").strip()
-    category = request.form.get("category", "").strip()
+    title = request.form.get("title","").strip()
+    year = request.form.get("year","").strip()
+    category = request.form.get("category","").strip()
+    tz_offset = int(request.form.get("tz_offset","0"))  # minutes from UTC to local (JS getTimezoneOffset)
     start_raw = (request.form.get("start_time") or "").strip()
     end_raw   = (request.form.get("end_time") or "").strip()
-
+    start_time_utc = (request.form.get('start_time_utc') or '').strip()
+    end_time_utc   = (request.form.get('end_time_utc') or '').strip()
     if not title or not year or not category or not start_raw or not end_raw:
-        flash("All fields are required for scheduling.", "error")
-        return redirect(url_for("admin"))
-
-    def to_utc_iso(local_str):
-        if len(local_str) == 16:
-            local_str += ":00"
-        dt = datetime.fromisoformat(local_str)
-        dt = dt.replace(tzinfo=IST)  # assume IST input
-        return dt.astimezone(timezone.utc).isoformat()
-
-    start_time = to_utc_iso(start_raw)
-    end_time   = to_utc_iso(end_raw)
-
-    sdt = parse_iso(start_time)
-    edt = parse_iso(end_time)
-    if not sdt or not edt or edt <= sdt:
-        flash("Invalid time window. End must be after start.", "error")
-        return redirect(url_for("admin"))
-
-    created_by = session.get("user_id")
-    cand_limit = request.form.get("candidate_limit", "").strip()
-    try:
-        cand_limit_val = int(cand_limit) if cand_limit else None
-        if cand_limit_val is not None and cand_limit_val < 1:
-            raise ValueError
-    except ValueError:
-        flash("Candidate limit must be a positive number.", "error")
-        return redirect(url_for("admin"))
-
-    execute(
-        "INSERT INTO elections (title,year,category,start_time,end_time,created_by,candidate_limit) VALUES (?,?,?,?,?,?,?)",
-        (title, int(year), category, start_time, end_time, created_by, cand_limit_val),
-    )
-    flash("Election scheduled.", "ok")
-    return redirect(url_for("admin"))
-
+        flash("All fields are required for scheduling.", "error"); return redirect(url_for("admin"))
     def to_utc_iso(local_str):
         if len(local_str)==16: local_str += ":00"
         dt = datetime.fromisoformat(local_str)  # naive local wall time
@@ -337,6 +313,45 @@ def results():
     """, (e["id"], e["id"]))
     results = [{"name": r["name"], "votes": r["votes"]} for r in rows]
     return render_template("result.html", election=e, results=results, elections=query("SELECT * FROM elections ORDER BY start_time DESC"))
+
+
+@app.route("/results_excel/<int:eid>")
+@login_required()
+def results_excel(eid):
+    import io
+    from openpyxl import Workbook
+    e = query("SELECT * FROM elections WHERE id=?", (eid,), one=True)
+    if not e:
+        flash("Election not found", "error")
+        return redirect(url_for("admin"))
+    rows = query("""
+        SELECT c.name, COUNT(v.id) as votes
+        FROM candidates c
+        LEFT JOIN votes v ON v.candidate_id=c.id AND v.election_id=?
+        WHERE c.election_id=?
+        GROUP BY c.id
+        ORDER BY votes DESC, c.name ASC
+    """, (eid, eid))
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Results"
+    ws.append(["Election", e["title"] or e["category"]])
+    ws.append(["Start", e["start_time"], "End", e["end_time"]])
+    ws.append([])
+    ws.append(["Candidate", "Votes"])
+    for r in rows:
+        ws.append([r["name"], r["votes"]])
+    stream = io.BytesIO()
+    wb.save(stream)
+    stream.seek(0)
+    return (
+        stream.read(),
+        200,
+        {
+            "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "Content-Disposition": f"attachment; filename=results_{eid}.xlsx",
+        },
+    )
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
