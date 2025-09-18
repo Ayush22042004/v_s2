@@ -113,30 +113,28 @@ def login_required(role=None):
 
 # -------------- Time helpers --------------
 
-import pytz
-ist = pytz.timezone("Asia/Kolkata")
+# remove: import pytz
+from zoneinfo import ZoneInfo
+
+IST = ZoneInfo("Asia/Kolkata")
 
 def parse_iso(s):
     try:
-        # Parse input string as naive datetime
         dt = datetime.fromisoformat((s or "").replace("Z", ""))
         if dt.tzinfo is None:
-            # Assume input is in IST
-            dt = ist.localize(dt)
-        # Always convert to UTC before storing
+            dt = dt.replace(tzinfo=IST)   # assume IST input
         return dt.astimezone(timezone.utc)
     except Exception:
         return None
 
-
 def to_ist(dt):
     try:
-        ist = pytz.timezone("Asia/Kolkata")
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
-        return dt.astimezone(ist)
+        return dt.astimezone(IST)
     except Exception:
         return dt
+
 
 
 def classify_elections(rows):
