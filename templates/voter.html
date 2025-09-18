@@ -10,7 +10,7 @@
           <input type="hidden" name="election_id" value="{{ e.id }}">
           <label>Choose Candidate</label>
           <select name="candidate_id" required>
-            {% for c in candidates if c.election_id == e.id %}
+            {% for c in cand_map.get(e.id, []) %}
               <option value="{{ c.id }}">{{ c.name }}</option>
             {% endfor %}
           </select>
