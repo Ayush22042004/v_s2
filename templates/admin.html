@@ -5,10 +5,16 @@
   <div class="card">
     <h3>Schedule Election</h3>
     <form id="scheduleForm" method="POST" action="{{ url_for('schedule_election') }}">
-      
-      
-      
-      
+      <input type="hidden" name="start_time_utc">
+      <input type="hidden" name="end_time_utc">
+      <input type="hidden" name="tz_offset" value="0">
+      <script>
+        document.addEventListener("DOMContentLoaded", function(){
+          var off = new Date().getTimezoneOffset();
+          var el = document.querySelector('input[name="tz_offset"]');
+          if (el) el.value = off;
+        });
+      </script>
       <input name="title" placeholder="Election Title" required>
       <select name="year" required>
         {% for y in range(2023, 2031) %}
