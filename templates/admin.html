@@ -1,148 +1,76 @@
 {% extends "base.html" %}
 {% block content %}
 <h2>Admin Dashboard</h2>
+
 <div class="grid">
   <div class="card">
     <h3>Schedule Election</h3>
-    <form id="scheduleForm" method="POST" action="{{ url_for('schedule_election') }}">
-      <input type="hidden" name="start_time_utc">
-      <input type="hidden" name="end_time_utc">
-      <input type="hidden" name="tz_offset" value="0">
-      <script>
-        document.addEventListener("DOMContentLoaded", function(){
-          var off = new Date().getTimezoneOffset();
-          var el = document.querySelector('input[name="tz_offset"]');
-          if (el) el.value = off;
-        });
-      </script>
+    <form method="POST" action="{{ url_for('schedule_election') }}">
       <input name="title" placeholder="Election Title" required>
+      <label>Year</label>
       <select name="year" required>
         {% for y in range(2023, 2031) %}
           <option value="{{ y }}" {% if y==2025 %}selected{% endif %}>{{ y }}</option>
         {% endfor %}
       </select>
+      <label>Category</label>
       <select name="category" required>
-        <option value="" disabled>Category</option>
-        <option selected>General</option>
-        <option>Technical</option>
-        <option>Cultural</option>
+        <option>General</option><option>Technical</option><option>Cultural</option>
       </select>
       <label>Start</label>
-      <input name="start_time" type="datetime-local" required>
+      <input type="datetime-local" name="start_time" required>
       <label>End</label>
-      <input name="end_time" type="datetime-local" required>
+      <input type="datetime-local" name="end_time" required>
       <label>Candidate limit (optional)</label>
-      <input name="candidate_limit" type="number" min="1" placeholder="e.g. 4">
+      <input name="candidate_limit" type="number" min="1">
       <button class="btn primary" type="submit">Schedule</button>
     </form>
   </div>
 
   <div class="card">
     <h3>Add Candidate</h3>
-    {% if elections|length == 0 %}
-      <p class="muted">No elections yet. Please schedule an election first.</p>
-    {% else %}
     <form method="POST" action="{{ url_for('add_candidate') }}" enctype="multipart/form-data">
       <input name="name" placeholder="Candidate name" required>
-      <select name="category" required>
-        <option value="" disabled selected>Choose category</option>
-        <option>General</option>
-        <option>Technical</option>
-        <option>Cultural</option>
-      </select>
       <label>Election</label>
       <select name="election_id" required>
-        <option value="" disabled selected>Select your election</option>
-        {% for e in elections %}
-          <option value="{{ e.id }}">{{ e.title or e.category }} • {{ e.year or "YYYY" }}</option>
+        {% for e in (ongoing + scheduled) %}
+          <option value="{{ e.id }}">{{ e.title or e.category }}</option>
+        {% else %}
+          <option disabled>No eligible election</option>
         {% endfor %}
       </select>
       <input type="file" name="photo" accept="image/*">
       <button class="btn primary" type="submit">Add Candidate</button>
     </form>
-    {% endif %}
-  </div>
-
-  <div class="card">
-    <h3>Your Elections</h3>
-    <ul>
-      {% for e in elections %}
-        <li>
-          <strong>{{ e.title or e.category }}</strong> • {{ e.category }} • {{ e.year or "YYYY" }}<br>
-          <span class="muted"><span class="utc-time">{{ e.start_time }}</span> → <span class="utc-time">{{ e.end_time }}</span></span>
-          <span class="badge" data-start="{{ e.start_time }}" data-end="{{ e.end_time }}"></span>
-        </li>
-      {% else %}
-        <li class="muted">No elections yet.</li>
-      {% endfor %}
-    </ul>
   </div>
 </div>
 
-<script>
-  function pad(n){return (n<10?'0':'')+n;}
-  function toLocalInputValue(d){
-    return d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate()) + 'T' + pad(d.getHours()) + ':' + pad(d.getMinutes());
-  }
-  function setDefaultTimes(){
-    const startEl = document.querySelector('input[name="start_time"]');
-    const endEl = document.querySelector('input[name="end_time"]');
-    if(!startEl || !endEl) return;
-    if(!startEl.value || !endEl.value){
-      const now = new Date();
-      now.setSeconds(0,0);
-      now.setMinutes(now.getMinutes()+1);
-      const end = new Date(now.getTime() + 10*60000);
-      startEl.value = toLocalInputValue(now);
-      endEl.value = toLocalInputValue(end);
-      startEl.min = toLocalInputValue(now);
-      endEl.min = toLocalInputValue(now);
-    }
-  }
-  function updateBadges(){
-    const now = new Date();
-    document.querySelectorAll('.badge[data-start][data-end]').forEach(function(b){
-      const s = new Date(b.dataset.start);
-      const t = new Date(b.dataset.end);
-      b.classList.remove('active','upcoming','ended');
-      if(isNaN(s) || isNaN(t)){ b.textContent=''; return; }
-      if(s <= now && now <= t){
-        b.textContent = 'Active now'; b.classList.add('active');
-      }else if(now < s){
-        b.textContent = 'Upcoming'; b.classList.add('upcoming');
-      }else{
-        b.textContent = 'Ended'; b.classList.add('ended');
-      }
-    });
-  }
-  document.addEventListener('DOMContentLoaded', function(){
-    setDefaultTimes();
-    updateBadges();
-    setInterval(updateBadges, 30000);
-  });
-</script>
+<div class="kanban">
+  <div>
+    <h3>Ongoing</h3>
+    <ul>{% for e in ongoing %}
+      <li><strong>{{ e.title or e.category }}</strong> • {{ e.start_time|istfmt }} → {{ e.end_time|istfmt }}</li>
+    {% else %}<li class="muted">None</li>{% endfor %}</ul>
+  </div>
+  <div>
+    <h3>Upcoming</h3>
+    <ul>{% for e in scheduled %}
+      <li>{{ e.title or e.category }} • {{ e.start_time|istfmt }}</li>
+    {% else %}<li class="muted">None</li>{% endfor %}</ul>
+  </div>
+  <div>
+    <h3>Ended</h3>
+    <ul>{% for e in ended %}
+      <li>{{ e.title or e.category }} • {{ e.start_time|istfmt }} → {{ e.end_time|istfmt }}</li>
+    {% else %}<li class="muted">None</li>{% endfor %}</ul>
+  </div>
+  <div>
+    <h3>Results</h3>
+    <ul>{% for e in ended %}
+      <li>{{ e.title or e.category }}
+        <a href="{{ url_for('results', election_id=e.id) }}">View Results</a> |
+        <a href="{{ url_for('results_excel', eid=e.id) }}">Download Excel</a></li>
+    {% else %}<li class="muted">No results available</li>{% endfor %}</ul>
+  </div>
+</div>
 {% endblock %}
-
-<script>
-  function toUTCISO(localValue){
-    if(!localValue) return "";
-    var d = new Date(localValue); // interpret as local wall time
-    if (isNaN(d)) return "";
-    return d.toISOString(); // UTC ISO string
-  }
-  document.addEventListener('DOMContentLoaded', function(){
-    var form = document.getElementById('scheduleForm');
-    if(form){
-      form.addEventListener('submit', function(){
-        var s = document.querySelector('input[name="start_time"]');
-        var e = document.querySelector('input[name="end_time"]');
-        var su = document.querySelector('input[name="start_time_utc"]');
-        var eu = document.querySelector('input[name="end_time_utc"]');
-        if(s && e && su && eu){
-          su.value = toUTCISO(s.value);
-          eu.value = toUTCISO(e.value);
-        }
-      });
-    }
-  });
-</script>
