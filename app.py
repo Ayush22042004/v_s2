@@ -2,6 +2,8 @@
 import os
 import sqlite3
 from datetime import datetime, timezone, timedelta
+from zoneinfo import ZoneInfo
+IST = ZoneInfo('Asia/Kolkata')
 from functools import wraps
 
 from flask import Flask, render_template, request, redirect, url_for, flash, session
