@@ -2,6 +2,8 @@
 import os
 import sqlite3
 from datetime import datetime, timezone, timedelta
+from zoneinfo import ZoneInfo
+IST = ZoneInfo('Asia/Kolkata')
 from functools import wraps
 
 from flask import Flask, render_template, request, redirect, url_for, flash, session
@@ -114,27 +116,21 @@ def login_required(role=None):
 # -------------- Time helpers --------------
 def parse_iso(s):
     try:
-        dt = datetime.fromisoformat((s or "").replace("Z", "+00:00"))
+        dt = datetime.fromisoformat((s or "").replace("Z", ""))
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
-        return dt
+        return dt.astimezone(timezone.utc)   # always UTC
     except Exception:
         return None
 
 
-def classify_elections(rows):
-    now = now_utc()
-    ongoing, scheduled, ended = [], [], []
-    for e in rows:
-        s = parse_iso(e["start_time"]); t = parse_iso(e["end_time"])
-        if s and t:
-            if s <= now <= t:
-                ongoing.append(e)
-            elif now < s:
-                scheduled.append(e)
-            else:
-                ended.append(e)
-    return ongoing, scheduled, ended
+def to_ist(dt):
+    try:
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(IST)
+    except Exception:
+        return dt
 
 def now_utc():
     return datetime.now(timezone.utc)
@@ -224,19 +220,53 @@ def add_candidate():
             (name, category, photo_path, election_id))
     flash("Candidate added to election.", "ok"); return redirect(url_for("admin"))
 
+
 @app.route("/schedule_election", methods=["POST"])
 @login_required(role="admin")
 def schedule_election():
-    title = request.form.get("title","").strip()
-    year = request.form.get("year","").strip()
-    category = request.form.get("category","").strip()
-    tz_offset = int(request.form.get("tz_offset","0"))  # minutes from UTC to local (JS getTimezoneOffset)
+    title = request.form.get("title", "").strip()
+    year = request.form.get("year", "").strip()
+    category = request.form.get("category", "").strip()
     start_raw = (request.form.get("start_time") or "").strip()
     end_raw   = (request.form.get("end_time") or "").strip()
-    start_time_utc = (request.form.get('start_time_utc') or '').strip()
-    end_time_utc   = (request.form.get('end_time_utc') or '').strip()
+
     if not title or not year or not category or not start_raw or not end_raw:
-        flash("All fields are required for scheduling.", "error"); return redirect(url_for("admin"))
+        flash("All fields are required for scheduling.", "error")
+        return redirect(url_for("admin"))
+
+    def to_utc_iso(local_str):
+        if len(local_str) == 16:
+            local_str += ":00"
+        dt = datetime.fromisoformat(local_str)
+        dt = dt.replace(tzinfo=IST)  # IST input
+        return dt.astimezone(timezone.utc).isoformat()
+
+    start_time = to_utc_iso(start_raw)
+    end_time   = to_utc_iso(end_raw)
+
+    sdt = parse_iso(start_time)
+    edt = parse_iso(end_time)
+    if not sdt or not edt or edt <= sdt:
+        flash("Invalid time window. End must be after start.", "error")
+        return redirect(url_for("admin"))
+
+    created_by = session.get("user_id")
+    cand_limit = request.form.get("candidate_limit", "").strip()
+    try:
+        cand_limit_val = int(cand_limit) if cand_limit else None
+        if cand_limit_val is not None and cand_limit_val < 1:
+            raise ValueError
+    except ValueError:
+        flash("Candidate limit must be a positive number.", "error")
+        return redirect(url_for("admin"))
+
+    execute(
+        "INSERT INTO elections (title,year,category,start_time,end_time,created_by,candidate_limit) VALUES (?,?,?,?,?,?,?)",
+        (title, int(year), category, start_time, end_time, created_by, cand_limit_val),
+    )
+    flash("Election scheduled.", "ok")
+    return redirect(url_for("admin"))
+
     def to_utc_iso(local_str):
         if len(local_str)==16: local_str += ":00"
         dt = datetime.fromisoformat(local_str)  # naive local wall time
@@ -270,19 +300,13 @@ def current_active_election():
     return None
 
 
-def classify_elections(rows):
-    now = now_utc()
-    ongoing, scheduled, ended = [], [], []
-    for e in rows:
-        s = parse_iso(e["start_time"]); t = parse_iso(e["end_time"])
-        if s and t:
-            if s <= now <= t:
-                ongoing.append(e)
-            elif now < s:
-                scheduled.append(e)
-            else:
-                ended.append(e)
-    return ongoing, scheduled, ended
+def to_ist(dt):
+    try:
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(IST)
+    except Exception:
+        return dt
 
 @app.route("/voter")
 @login_required(role="voter")
