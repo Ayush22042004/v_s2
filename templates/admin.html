@@ -3,7 +3,6 @@
 <h2>Admin Dashboard</h2>
 
 <div class="grid">
-  <!-- Schedule Election -->
   <div class="card">
     <h3>Schedule Election</h3>
     <form method="POST" action="{{ url_for('schedule_election') }}">
@@ -28,7 +27,6 @@
     </form>
   </div>
 
-  <!-- Add Candidate -->
   <div class="card">
     <h3>Add Candidate</h3>
     <form method="POST" action="{{ url_for('add_candidate') }}" enctype="multipart/form-data">
@@ -48,55 +46,31 @@
 </div>
 
 <div class="kanban">
-  <!-- Ongoing -->
   <div>
     <h3>Ongoing</h3>
-    <ul>
-      {% for e in ongoing %}
-        <li><strong>{{ e.title or e.category }}</strong> • {{ e.start_time|istfmt }} → {{ e.end_time|istfmt }}</li>
-      {% else %}
-        <li class="muted">None</li>
-      {% endfor %}
-    </ul>
+    <ul>{% for e in ongoing %}
+      <li><strong>{{ e.title or e.category }}</strong> • {{ e.start_time|istfmt }} → {{ e.end_time|istfmt }}</li>
+    {% else %}<li class="muted">None</li>{% endfor %}</ul>
   </div>
-
-  <!-- Upcoming -->
   <div>
     <h3>Upcoming</h3>
-    <ul>
-      {% for e in scheduled %}
-        <li>{{ e.title or e.category }} • {{ e.start_time|istfmt }}</li>
-      {% else %}
-        <li class="muted">None</li>
-      {% endfor %}
-    </ul>
+    <ul>{% for e in scheduled %}
+      <li>{{ e.title or e.category }} • {{ e.start_time|istfmt }}</li>
+    {% else %}<li class="muted">None</li>{% endfor %}</ul>
   </div>
-
-  <!-- Ended -->
   <div>
     <h3>Ended</h3>
-    <ul>
-      {% for e in ended %}
-        <li>{{ e.title or e.category }} • {{ e.start_time|istfmt }} → {{ e.end_time|istfmt }}</li>
-      {% else %}
-        <li class="muted">None</li>
-      {% endfor %}
-    </ul>
+    <ul>{% for e in ended %}
+      <li>{{ e.title or e.category }} • {{ e.start_time|istfmt }} → {{ e.end_time|istfmt }}</li>
+    {% else %}<li class="muted">None</li>{% endfor %}</ul>
   </div>
-
-  <!-- Results -->
   <div>
     <h3>Results</h3>
-    <ul>
-      {% for e in ended %}
-        <li>{{ e.title or e.category }}
-          <a href="{{ url_for('results', election_id=e.id) }}">View Results</a> |
-          <a href="{{ url_for('results_excel', eid=e.id) }}">Download Excel</a>
-        </li>
-      {% else %}
-        <li class="muted">No results available</li>
-      {% endfor %}
-    </ul>
+    <ul>{% for e in ended %}
+      <li>{{ e.title or e.category }}
+        <a href="{{ url_for('results', election_id=e.id) }}">View Results</a> |
+        <a href="{{ url_for('results_excel', eid=e.id) }}">Download Excel</a></li>
+    {% else %}<li class="muted">No results available</li>{% endfor %}</ul>
   </div>
 </div>
 {% endblock %}
