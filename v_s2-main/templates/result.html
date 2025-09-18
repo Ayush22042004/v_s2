@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Results</h2>
+{% if not election %}
+  <div class="card"><p>No election selected.</p></div>
+{% else %}
+  <div class="card">
+    <h3>{{ election.title or election.category }}</h3>
+    <canvas id="resultsChart"></canvas>
+    <script>
+      const labels = [{% for r in results %}"{{ r.name }}",{% endfor %}];
+      const data = [{% for r in results %}{{ r.votes }},{% endfor %}];
+      new Chart(document.getElementById('resultsChart'), {
+        type: 'bar',
+        data: { labels, datasets: [{ label: 'Votes', data }] },
+        options: { plugins: { legend: { display: false } } }
+      });
+    </script>
+  </div>
+{% endif %}
+{% endblock %}
