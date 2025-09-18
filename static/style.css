@@ -22,3 +22,24 @@ ul{padding-left:16px}
 .badge.active{background:rgba(34,197,94,.15);border-color:rgba(34,197,94,.35)}
 .badge.upcoming{background:rgba(59,130,246,.15);border-color:rgba(59,130,246,.35)}
 .badge.ended{background:rgba(148,163,184,.15);border-color:rgba(148,163,184,.35)}
+
+
+/* Responsive nav */
+.menu-toggle{ display:none; margin-right:8px; }
+@media (max-width: 640px){
+  .menu-toggle{ display:inline-block; }
+  .topbar .nav-right{ display:none; }
+  body.menu-open .topbar .nav-right{ display:block; position:absolute; right:8px; top:40px; background:#111; padding:10px; border:1px solid #333; border-radius:8px; }
+  /* Move dashboard stuff into menu by simply hiding big cards on home */
+  .grid{ grid-template-columns: 1fr !important; }
+}
+
+/* Kanban */
+.kanban{ display:grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.kanban h4{ margin: 0 0 6px 0; }
+.kanban ul{ list-style: none; padding: 0; margin: 0; }
+.kanban li{ padding: 6px 8px; border: 1px solid #333; border-radius: 8px; margin-bottom: 6px; }
+
+/* Tables */
+.table{ width:100%; border-collapse: collapse; }
+.table th,.table td{ border:1px solid #333; padding:6px 8px; text-align:left; }

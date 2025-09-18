@@ -1,0 +1,19 @@
+
+{% extends "base.html" %}
+{% block content %}
+<h2>Election Dashboard</h2>
+<div class="card">
+  <h3>{{ election.title or election.category }}</h3>
+  <p class="muted"><span class="utc-time">{{ election.start_time }}</span> → <span class="utc-time">{{ election.end_time }}</span></p>
+  <canvas id="dashChart"></canvas>
+  <script>
+    const labels = [{% for r in results %}"{{ r.name }}",{% endfor %}];
+    const data = [{% for r in results %}{{ r.votes }},{% endfor %}];
+    new Chart(document.getElementById('dashChart'), {
+      type: 'bar',
+      data: { labels, datasets: [{ label: 'Votes', data }] },
+      options: { plugins: { legend: { display: false } } }
+    });
+  </script>
+</div>
+{% endblock %}

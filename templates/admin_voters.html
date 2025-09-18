@@ -1,0 +1,15 @@
+
+{% extends "base.html" %}
+{% block content %}
+<h2>Voter Data</h2>
+<div class="card">
+  <table class="table">
+    <tr><th>ID</th><th>Name</th><th>Username</th><th>Email</th><th>ID Number</th></tr>
+    {% for v in voters %}
+      <tr><td>{{ v.id }}</td><td>{{ v.name }}</td><td>{{ v.username }}</td><td>{{ v.email or "—" }}</td><td>{{ v.id_number }}</td></tr>
+    {% else %}
+      <tr><td colspan="5" class="muted">No voters yet.</td></tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}

@@ -112,24 +112,59 @@ def login_required(role=None):
     return deco
 
 # -------------- Time helpers --------------
+
+import pytz
+ist = pytz.timezone("Asia/Kolkata")
+
 def parse_iso(s):
     try:
-        dt = datetime.fromisoformat((s or "").replace("Z", "+00:00"))
+        # Parse input string as naive datetime
+        dt = datetime.fromisoformat((s or "").replace("Z", ""))
         if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        return dt
+            # Assume input is in IST
+            dt = ist.localize(dt)
+        # Always convert to UTC before storing
+        return dt.astimezone(timezone.utc)
     except Exception:
         return None
 
+
+def to_ist(dt):
+    try:
+        ist = pytz.timezone("Asia/Kolkata")
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(ist)
+    except Exception:
+        return dt
+
+
+def classify_elections(rows):
+    now = now_utc()
+    ongoing, scheduled, ended = [], [], []
+    for e in rows:
+        s = parse_iso(e["start_time"]); t = parse_iso(e["end_time"])
+        if s and t:
+            if s <= now <= t: ongoing.append(e)
+            elif now < s: scheduled.append(e)
+            else: ended.append(e)
+    return ongoing, scheduled, ended
+
+
 def now_utc():
     return datetime.now(timezone.utc)
+
+@app.context_processor
+def inject_user():
+    u = query("SELECT * FROM users WHERE id=?", (session.get("user_id"),), one=True) if session.get("user_id") else None
+    return dict(current_user=u)
 
 # -------------- Routes --------------
 @app.route("/")
 def index():
     user = query("SELECT * FROM users WHERE id=?", (session["user_id"],), one=True) if "user_id" in session else None
     active = query("SELECT * FROM elections ORDER BY start_time DESC LIMIT 5")
-    return render_template("index.html", user=user, elections=active)
+    return render_template("index.html", user=user, elections=[{**e, "start_time": to_ist(parse_iso(e["start_time"])), "end_time": to_ist(parse_iso(e["end_time"]))} for e in active])
 
 @app.route("/signup", methods=["GET","POST"])
 def signup():
@@ -157,7 +192,7 @@ def login():
         password = request.form.get("password","")
         user = query("SELECT * FROM users WHERE lower(username)=?", (username,), one=True)
         if user and check_password_hash(user["password"], password):
-            session["user_id"] = user["id"]; session["role"]=user["role"]
+            session["user_id"] = user["id"]; session["role"]=user["role"]; session["name"]=user["name"]
             flash("Welcome back!", "ok"); return redirect(url_for("index"))
         flash("Invalid credentials.", "error")
     return render_template("login.html")
@@ -178,7 +213,8 @@ def admin():
         WHERE e.created_by = ? OR e.created_by IS NULL
         ORDER BY c.id DESC
     """, (session.get("user_id"),))
-    return render_template("admin.html", elections=own_elections, candidates=candidates)
+    ongoing, scheduled, ended = classify_elections(query("SELECT * FROM elections ORDER BY start_time DESC"))
+    return render_template("admin.html", ongoing=ongoing, scheduled=scheduled, ended=ended, elections=own_elections, candidates=candidates)
 
 @app.route("/add_candidate", methods=["POST"])
 @login_required(role="admin")
@@ -254,12 +290,38 @@ def current_active_election():
             return e
     return None
 
+
+def to_ist(dt):
+    try:
+        ist = pytz.timezone("Asia/Kolkata")
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(ist)
+    except Exception:
+        return dt
+
+
+def classify_elections(rows):
+    now = now_utc()
+    ongoing, scheduled, ended = [], [], []
+    for e in rows:
+        s = parse_iso(e["start_time"]); t = parse_iso(e["end_time"])
+        if s and t:
+            if s <= now <= t: ongoing.append(e)
+            elif now < s: scheduled.append(e)
+            else: ended.append(e)
+    return ongoing, scheduled, ended
+
+
 @app.route("/voter")
 @login_required(role="voter")
 def voter_panel():
     e = current_active_election()
     if not e:
-        return render_template("voter.html", election=None, voted=False, candidates=[])
+        # show upcoming elections too
+        rows = query("SELECT * FROM elections ORDER BY start_time ASC")
+        ongoing, scheduled, ended = classify_elections(rows)
+        return render_template("voter.html", election=None, voted=False, candidates=[], upcoming=scheduled)
     voted = bool(query("SELECT 1 FROM votes WHERE voter_id=? AND election_id=?", (session["user_id"], e["id"]), one=True))
     candidates = query("SELECT * FROM candidates WHERE election_id=?", (e["id"],))
     return render_template("voter.html", election=e, voted=voted, candidates=candidates)
@@ -301,6 +363,23 @@ def results():
     """, (e["id"], e["id"]))
     results = [{"name": r["name"], "votes": r["votes"]} for r in rows]
     return render_template("result.html", election=e, results=results, elections=query("SELECT * FROM elections ORDER BY start_time DESC"))
+
+
+@app.route("/admin/voters")
+@login_required(role="admin")
+def admin_voters():
+    rows = query("SELECT id, name, username, email, id_number FROM users WHERE role='voter' ORDER BY id DESC")
+    return render_template("admin_voters.html", voters=rows)
+
+@app.route("/election/<int:eid>/dashboard")
+@login_required()
+def election_dashboard(eid):
+    e = query("SELECT * FROM elections WHERE id=?", (eid,), one=True)
+    if not e: flash("Election not found.", "error"); return redirect(url_for("index"))
+    rows = query("SELECT c.name, COUNT(v.id) as votes FROM candidates c LEFT JOIN votes v ON v.candidate_id=c.id AND v.election_id=? WHERE c.election_id=? GROUP BY c.id ORDER BY votes DESC, c.name ASC", (e["id"], e["id"]))
+    results = [{"name": r["name"], "votes": r["votes"]} for r in rows]
+    return render_template("election_dashboard.html", election=e, results=results)
+
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))

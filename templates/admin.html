@@ -53,7 +53,7 @@
       <label>Election</label>
       <select name="election_id" required>
         <option value="" disabled selected>Select your election</option>
-        {% for e in elections %}
+        {% for e in (ongoing + scheduled) %}
           <option value="{{ e.id }}">{{ e.title or e.category }} • {{ e.year or "YYYY" }}</option>
         {% endfor %}
       </select>
@@ -66,7 +66,7 @@
   <div class="card">
     <h3>Your Elections</h3>
     <ul>
-      {% for e in elections %}
+      {% for e in (ongoing + scheduled) %}
         <li>
           <strong>{{ e.title or e.category }}</strong> • {{ e.category }} • {{ e.year or "YYYY" }}<br>
           <span class="muted"><span class="utc-time">{{ e.start_time }}</span> → <span class="utc-time">{{ e.end_time }}</span></span>
@@ -121,6 +121,22 @@
     setInterval(updateBadges, 30000);
   });
 </script>
+
+  <div class="card">
+    <h3>Election Status</h3>
+    <div class="kanban">
+      <div><h4>Ongoing</h4>
+        <ul>{% for e in ongoing %}<li>{{ e.title or e.category }} • <span class="utc-time">{{ e.start_time }}</span> → <span class="utc-time">{{ e.end_time }}</span></li>{% else %}<li class="muted">None</li>{% endfor %}</ul>
+      </div>
+      <div><h4>Scheduled</h4>
+        <ul>{% for e in scheduled %}<li>{{ e.title or e.category }} • <span class="utc-time">{{ e.start_time }}</span> → <span class="utc-time">{{ e.end_time }}</span></li>{% else %}<li class="muted">None</li>{% endfor %}</ul>
+      </div>
+      <div><h4>Ended</h4>
+        <ul>{% for e in ended %}<li>{{ e.title or e.category }} • <a href="{{ url_for('election_dashboard', eid=e.id) }}">View Dashboard</a></li>{% else %}<li class="muted">None</li>{% endfor %}</ul>
+      </div>
+    </div>
+  </div>
+
 {% endblock %}
 
 <script>
