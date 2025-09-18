@@ -272,11 +272,18 @@ def to_ist(dt):
 def voter_panel():
     rows = query("SELECT * FROM elections ORDER BY start_time ASC")
     ongoing, scheduled, ended = classify_elections(rows)
-    # collect candidates for ongoing elections
+
     cand_map = {}
     for e in ongoing:
         cand_map[e["id"]] = query("SELECT * FROM candidates WHERE election_id=?", (e["id"],))
-    return render_template("voter.html", ongoing=ongoing, scheduled=scheduled, ended=ended, cand_map=cand_map)
+
+    return render_template(
+        "voter.html",
+        ongoing=ongoing,
+        scheduled=scheduled,
+        ended=ended,
+        cand_map=cand_map,
+    )
 voted = bool(query("SELECT 1 FROM votes WHERE voter_id=? AND election_id=?", (session["user_id"], e["id"]), one=True))
     candidates = query("SELECT * FROM candidates WHERE election_id=?", (e["id"],))
     return render_template("voter.html", election=e, voted=voted, candidates=candidates)
