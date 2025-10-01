@@ -2,7 +2,6 @@ services:
   - type: web
     name: vs-app
     env: python
-    region: frankfurt
     plan: free
     startCommand: gunicorn app:app --bind 0.0.0.0:$PORT --workers=2 --threads=4 --timeout 120
     envVars:
@@ -12,4 +11,3 @@ services:
         value: Asia/Kolkata
       - key: FLASK_ENV
         value: production
-# NOTE: No code changes. Drop these files into your project root and deploy.
