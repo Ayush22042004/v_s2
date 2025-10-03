@@ -12,7 +12,7 @@
     <div class="brand">🗳️ VOTE</div>
     <div class="nav-right">
       {% if session.get('user_id') %}
-        <span class="muted">Hi, {{ session.get('role') }}</span>
+        <span class="muted">Hi, {{ session['user']['username'] }}</span>
         <a class="btn small" href="{{ url_for('logout') }}">Logout</a>
       {% else %}
         <a class="btn small" href="{{ url_for('login') }}">Login</a>
@@ -43,5 +43,15 @@
       });
     })();
   </script>
+
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const flashes = {{ get_flashed_messages(with_categories=true)|tojson }};
+  (flashes || []).forEach(([cat,msg]) => {
+    Swal.fire({icon: (cat==='ok')?'success': (cat==='error'?'error':'info'), title: msg, timer: 1800, showConfirmButton:false});
+  });
+});
+</script>
 </body>
 </html>

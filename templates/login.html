@@ -6,6 +6,9 @@
     <input name="username" placeholder="Username" required>
     <input type="password" name="password" placeholder="Password" required>
     <button class="btn primary" type="submit">Login</button>
-  </form>
+  <button type="button" id="pw-toggle" class="btn small" style="margin-top:8px">Show/Hide</button>
+</form>
 </div>
 {% endblock %}
+
+<script>document.addEventListener("click",e=>{if(e.target&&e.target.id==="pw-toggle"){const i=document.getElementById("pw");i.type=(i.type==="password"?"text":"password");}});</script>

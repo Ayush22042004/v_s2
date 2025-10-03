@@ -29,7 +29,7 @@
     <h3>Ended</h3>
     <ul>{% for e in ended %}
       <li>{{ e.title or e.category }} • {{ e.start_time|istfmt }} → {{ e.end_time|istfmt }}
-        <a href="{{ url_for('results', election_id=e.id) }}">View Results</a></li>
+        <a href="{{ url_for('results', election_id=e.id) }}"></a></li>
     {% else %}<li class="muted">None</li>{% endfor %}</ul>
   </div>
 </div>
