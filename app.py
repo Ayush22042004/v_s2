@@ -14,6 +14,26 @@ APP_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.environ.get("DB_PATH", os.path.join(APP_DIR, "voting.db"))
 
 app = Flask(__name__)
+
+# ---- Time helpers ----
+from datetime import timezone, datetime
+def parse_ist_local_to_utc(dt_local_str: str):
+    dt_naive = datetime.fromisoformat(dt_local_str)
+    dt_ist = dt_naive.replace(tzinfo=IST)
+    return dt_ist.astimezone(timezone.utc)
+
+@app.template_filter('istfmt')
+def istfmt(value):
+    try:
+        if value is None:
+            return ''
+        dt = value if not isinstance(value, str) else datetime.fromisoformat(value.replace('Z',''))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(IST).strftime('%d %b %Y, %I:%M %p IST')
+    except Exception:
+        return str(value)
+
 app.secret_key = os.environ.get("SECRET_KEY", "dev-key")
 
 # ---------------- DB Helpers ----------------
