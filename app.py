@@ -1,408 +1,133 @@
-from db_pg import get_conn, exec_sql, migrate_and_seed, parse_ist_local_to_utc, now_utc, install_jinja_filters
-
 import os
-import sqlite3
-from datetime import datetime, timezone, timedelta
-from zoneinfo import ZoneInfo
-IST = ZoneInfo('Asia/Kolkata')
-from functools import wraps
-
-from flask import Flask, render_template, request, redirect, url_for, flash, session
-from werkzeug.security import generate_password_hash, check_password_hash
-from werkzeug.utils import secure_filename
-
-APP_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.environ.get("DB_PATH", os.path.join(APP_DIR, "voting.db"))
+from flask import Flask, render_template, request, redirect, url_for, session, send_file, abort
+from io import BytesIO
+from openpyxl import Workbook
+from db_pg import exec_sql, migrate_and_seed, install_jinja_filters, parse_ist_local_to_utc, now_utc
 
 app = Flask(__name__)
-
-app = install_jinja_filters(app)
-# Auto-migrate + seed admin
+app.secret_key = os.environ.get('SECRET_KEY','dev-secret')
+install_jinja_filters(app)
 migrate_and_seed()
 
-# ---- Time helpers ----
-from datetime import timezone, datetime
-def parse_ist_local_to_utc(dt_local_str: str):
-    dt_naive = datetime.fromisoformat(dt_local_str)
-    dt_ist = dt_naive.replace(tzinfo=IST)
-    return dt_ist.astimezone(timezone.utc)
+def login_required(f):
+    from functools import wraps
+    @wraps(f)
+    def w(*a, **k):
+        if not session.get('user'):
+            return redirect(url_for('login'))
+        return f(*a, **k)
+    return w
 
-@app.template_filter('istfmt')
-def istfmt(value):
-    try:
-        if value is None:
-            return ''
-        dt = value if not isinstance(value, str) else datetime.fromisoformat(value.replace('Z',''))
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        return dt.astimezone(IST).strftime('%d %b %Y, %I:%M %p IST')
-    except Exception:
-        return str(value)
-
-app.secret_key = os.environ.get("SECRET_KEY", "dev-key")
-
-# ---------------- DB Helpers ----------------
-def get_db():
-    db = getattr(app, "_db", None)
-    if db is None:
-        db = sqlite3.connect(DB_PATH, check_same_thread=False)
-        db.row_factory = sqlite3.Row
-        app._db = db
-    return db
-
-def query(sql, args=(), one=False):
-    cur = get_db().execute(sql, args)
-    rows = cur.fetchall()
-    cur.close()
-    return (rows[0] if rows else None) if one else rows
-
-def execute(sql, args=()):
-    db = get_db()
-    cur = db.execute(sql, args)
-    db.commit()
-    return cur.lastrowid
-
-# -------------- Schema & Migrations --------------
-def ensure_schema():
-    db = get_db()
-    db.execute("""
-    CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT NOT NULL,
-        email TEXT UNIQUE,
-        username TEXT UNIQUE NOT NULL,
-        password TEXT NOT NULL,
-        role TEXT NOT NULL,
-        id_number TEXT
-    )
-    """)
-    db.execute("""
-    CREATE TABLE IF NOT EXISTS elections (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        title TEXT,
-        year INTEGER,
-        category TEXT NOT NULL,
-        start_time TEXT NOT NULL,
-        end_time TEXT NOT NULL,
-        created_by INTEGER,
-        candidate_limit INTEGER
-    )
-    """)
-    db.execute("""
-    CREATE TABLE IF NOT EXISTS candidates (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT NOT NULL,
-        category TEXT,
-        photo TEXT,
-        election_id INTEGER,
-        FOREIGN KEY (election_id) REFERENCES elections(id)
-    )
-    """)
-    db.execute("""
-    CREATE TABLE IF NOT EXISTS votes (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        voter_id INTEGER NOT NULL,
-        candidate_id INTEGER NOT NULL,
-        election_id INTEGER NOT NULL,
-        timestamp TEXT NOT NULL,
-        FOREIGN KEY (voter_id) REFERENCES users(id),
-        FOREIGN KEY (candidate_id) REFERENCES candidates(id),
-        FOREIGN KEY (election_id) REFERENCES elections(id)
-    )
-    """)
-    db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_votes_unique ON votes(voter_id, election_id)")
-    db.commit()
-
-def seed_admin():
-    admin = query("SELECT id FROM users WHERE role='admin' LIMIT 1", one=True)
-    if not admin:
-        execute("INSERT INTO users (name,email,username,password,role) VALUES (?,?,?,?,?)",
-                ("Admin","admin@example.com","admin", generate_password_hash("admin123"), "admin"))
-
-with app.app_context():
-    ensure_schema()
-    seed_admin()
-
-# -------------- Auth helpers --------------
-def login_required(role=None):
-    def deco(f):
-        @wraps(f)
-        def wrap(*args, **kwargs):
-            if "user_id" not in session:
-                flash("Please login first.", "warn")
-                return redirect(url_for("login"))
-            if role and session.get("role") != role:
-                flash("Not authorized.", "error")
-                return redirect(url_for("index"))
-            return f(*args, **kwargs)
-        return wrap
-    return deco
-
-# -------------- Time helpers --------------
-def parse_iso(s):
-    try:
-        dt = datetime.fromisoformat((s or "").replace("Z", ""))
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        return dt.astimezone(timezone.utc)
-    except Exception:
-        return None
-
-
-def to_ist(dt):
-    try:
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        return dt.astimezone(IST)
-    except Exception:
-        return dt
-
-def now_utc():
-    return datetime.now(timezone.utc)
-
-# -------------- Routes --------------
-@app.route("/")
-def index():
-    user = query("SELECT * FROM users WHERE id=?", (session["user_id"],), one=True) if "user_id" in session else None
-    active = query("SELECT * FROM elections ORDER BY start_time DESC LIMIT 5")
-    return render_template("index.html", user=user, elections=active)
-
-@app.route("/signup", methods=["GET","POST"])
-def signup():
-    if request.method == "POST":
-        name = request.form.get("name","").strip()
-        email = (request.form.get("email","").strip() or None)
-        username = request.form.get("username","").strip().lower()
-        password = request.form.get("password","")
-        id_number = request.form.get("id_number","").strip()
-        if not name or not username or not password or not id_number:
-            flash("All fields except email are required.", "error"); return redirect(url_for("signup"))
-        if query("SELECT 1 FROM users WHERE lower(username)=?", (username,), one=True):
-            flash("Username already taken.", "error"); return redirect(url_for("signup"))
-        if email and query("SELECT 1 FROM users WHERE lower(email)=?", (email.lower(),), one=True):
-            flash("Email already registered.", "error"); return redirect(url_for("signup"))
-        execute("INSERT INTO users (name,email,username,password,role,id_number) VALUES (?,?,?,?,?,?)",
-                (name, email.lower() if email else None, username, generate_password_hash(password), "voter", id_number))
-        flash("Account created. Please login.", "ok"); return redirect(url_for("login"))
-    return render_template("signup.html")
-
-@app.route("/login", methods=["GET","POST"])
-def login():
-    if request.method == "POST":
-        username = request.form.get("username","").strip().lower()
-        password = request.form.get("password","")
-        user = query("SELECT * FROM users WHERE lower(username)=?", (username,), one=True)
-        if user and check_password_hash(user["password"], password):
-            session["user_id"] = user["id"]; session["role"]=user["role"]
-            flash("Welcome back!", "ok"); return redirect(url_for("index"))
-        flash("Invalid credentials.", "error")
-    return render_template("login.html")
-
-@app.route("/logout")
-def logout():
-    session.clear(); flash("Logged out.", "ok"); return redirect(url_for("index"))
-
-# ----------- Admin Dashboard -----------
-@app.route("/admin")
-@login_required(role="admin")
-def admin():
-    rows = query("SELECT * FROM elections ORDER BY start_time DESC")
-    ongoing, scheduled, ended = classify_elections(rows)
-    return render_template("admin.html", ongoing=ongoing, scheduled=scheduled, ended=ended, elections=rows)
-@app.route("/add_candidate", methods=["POST"])
-@login_required(role="admin")
-def add_candidate():
-    name = request.form.get("name","").strip()
-    category = request.form.get("category","").strip() or "General"
-    election_id = request.form.get("election_id","").strip()
-    if not name or not election_id:
-        flash("Candidate name and election are required.", "error"); return redirect(url_for("admin"))
-    try:
-        election_id = int(election_id)
-    except ValueError:
-        flash("Invalid election selected.", "error"); return redirect(url_for("admin"))
-    e = query("SELECT id, candidate_limit, created_by FROM elections WHERE id=?", (election_id,), one=True)
-    if not e: flash("Selected election does not exist.", "error"); return redirect(url_for("admin"))
-    if e["created_by"] and e["created_by"] != session.get("user_id"):
-        flash("You can only add candidates to your own elections.", "error"); return redirect(url_for("admin"))
-    if e["candidate_limit"] is not None:
-        cnt = query("SELECT COUNT(*) AS c FROM candidates WHERE election_id=?", (election_id,), one=True)["c"]
-        if cnt >= e["candidate_limit"]:
-            flash("Candidate limit reached for this election.", "warn"); return redirect(url_for("admin"))
-    photo_path=None; f=request.files.get("photo")
-    if f and f.filename:
-        filename = secure_filename(f.filename)
-        uploads_dir = os.path.join(APP_DIR, "static", "uploads"); os.makedirs(uploads_dir, exist_ok=True)
-        f.save(os.path.join(uploads_dir, filename)); photo_path=f"uploads/{filename}"
-    execute("INSERT INTO candidates (name,category,photo,election_id) VALUES (?,?,?,?)",
-            (name, category, photo_path, election_id))
-    flash("Candidate added to election.", "ok"); return redirect(url_for("admin"))
-
-@app.route("/schedule_election", methods=["POST"])
-@login_required(role="admin")
-def schedule_election():
-    title = request.form.get("title","").strip()
-    year = request.form.get("year","").strip()
-    category = request.form.get("category","").strip()
-    tz_offset = int(request.form.get("tz_offset","0"))  # minutes from UTC to local (JS getTimezoneOffset)
-    start_raw = (request.form.get("start_time") or "").strip()
-    end_raw   = (request.form.get("end_time") or "").strip()
-    start_time_utc = (request.form.get('start_time_utc') or '').strip()
-    end_time_utc   = (request.form.get('end_time_utc') or '').strip()
-    if not title or not year or not category or not start_raw or not end_raw:
-        flash("All fields are required for scheduling.", "error"); return redirect(url_for("admin"))
-    def to_utc_iso(local_str):
-        if len(local_str)==16: local_str += ":00"
-        dt = datetime.fromisoformat(local_str)  # naive local wall time
-        # JS getTimezoneOffset() is minutes DIFFERENCE from UTC to local (UTC - local)
-        # Correct conversion: UTC = local + offset_minutes
-        utc_dt = dt - timedelta(minutes=tz_offset)
-        return utc_dt.replace(tzinfo=timezone.utc).isoformat()
-    start_time = to_utc_iso(start_raw); end_time = to_utc_iso(end_raw)
-    sdt = parse_iso(start_time); edt = parse_iso(end_time)
-    if not sdt or not edt or edt <= sdt:
-        flash("Invalid time window. End must be after start.", "error"); return redirect(url_for("admin"))
-    created_by = session.get("user_id")
-    cand_limit = request.form.get("candidate_limit","").strip()
-    try:
-        cand_limit_val = int(cand_limit) if cand_limit else None
-        if cand_limit_val is not None and cand_limit_val < 1: raise ValueError
-    except ValueError:
-        flash("Candidate limit must be a positive number.", "error"); return redirect(url_for("admin"))
-    execute("INSERT INTO elections (title,year,category,start_time,end_time,created_by,candidate_limit) VALUES (?,?,?,?,?,?,?)",
-            (title, int(year), category, start_time, end_time, created_by, cand_limit_val))
-    flash("Election scheduled.", "ok"); return redirect(url_for("admin"))
-
-# ----------- Voting & Results -----------
-def current_active_election():
-    rows = query("SELECT * FROM elections ORDER BY start_time DESC")
-    now = now_utc()
-    for e in rows:
-        s = parse_iso(e["start_time"]); t = parse_iso(e["end_time"])
-        if s and t and s <= now <= t:
-            return e
-    return None
-
-
-def to_ist(dt):
-    try:
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        return dt.astimezone(IST)
-    except Exception:
-        return dt
-
-
-@app.route("/vote", methods=["POST"])
-@login_required(role="voter")
-def vote():
-    try:
-        election_id = int(request.form.get("election_id","0"))
-        candidate_id = int(request.form.get("candidate_id","0"))
-    except ValueError:
-        flash("Invalid vote submission.", "error"); return redirect(url_for("voter_panel"))
-    e = query("SELECT * FROM elections WHERE id=?", (election_id,), one=True)
-    if not e: flash("No election is scheduled right now.", "warn"); return redirect(url_for("voter_panel"))
-    now = now_utc(); s = parse_iso(e["start_time"]); t = parse_iso(e["end_time"])
-    if not s or not t or not (s <= now <= t):
-        flash("This election is not active.", "warn"); return redirect(url_for("voter_panel"))
-    if query("SELECT 1 FROM votes WHERE voter_id=? AND election_id=?", (session["user_id"], election_id), one=True):
-        flash("You have already voted in this election.", "warn"); return redirect(url_for("voter_panel"))
-    c = query("SELECT * FROM candidates WHERE id=? AND election_id=?", (candidate_id, election_id), one=True)
-    if not c: flash("Invalid candidate selection.", "error"); return redirect(url_for("voter_panel"))
-    execute("INSERT INTO votes (voter_id,candidate_id,election_id,timestamp) VALUES (?,?,?,?)",
-            (session["user_id"], candidate_id, election_id, now.isoformat()))
-    flash("Vote recorded. Thank you!", "ok"); return redirect(url_for("voter_panel"))
-
-@app.route("/results")
-@login_required(role="admin")
-def results():
-    election_id = request.args.get("election_id")
-    e = query("SELECT * FROM elections WHERE id=?", (election_id,), one=True) if election_id else current_active_election()
-    if not e: flash("No election selected/active.", "warn"); return redirect(url_for("admin"))
-    rows = query("""
-        SELECT c.name, COUNT(v.id) as votes
-        FROM candidates c
-        LEFT JOIN votes v ON v.candidate_id=c.id AND v.election_id=?
-        WHERE c.election_id=?
-        GROUP BY c.id
-        ORDER BY votes DESC, c.name ASC
-    """, (e["id"], e["id"]))
-    results = [{"name": r["name"], "votes": r["votes"]} for r in rows]
-    return render_template("result.html", election=e, results=results, elections=query("SELECT * FROM elections ORDER BY start_time DESC"))
-
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8080))
-    app.run(host="0.0.0.0", port=port, debug=False)
-
-
-@app.template_filter("istfmt")
-def istfmt(value):
-    try:
-        dt = parse_iso(value)
-        dt = to_ist(dt)
-        return dt.strftime("%d %b %Y, %I:%M %p IST")
-    except Exception:
-        return value
-
+def admin_required(f):
+    from functools import wraps
+    @wraps(f)
+    def w(*a, **k):
+        u = session.get('user')
+        if not u or u.get('role')!='admin':
+            return redirect(url_for('login'))
+        return f(*a, **k)
+    return w
 
 def classify_elections(rows):
     now = now_utc()
     ongoing, scheduled, ended = [], [], []
     for e in rows:
-        s = parse_iso(e["start_time"]); t = parse_iso(e["end_time"])
-        if s and t:
-            if s <= now <= t: ongoing.append(e)
-            elif now < s: scheduled.append(e)
-            else: ended.append(e)
+        st, en = e['start_time'], e['end_time']
+        if st <= now <= en: ongoing.append(e)
+        elif now < st: scheduled.append(e)
+        else: ended.append(e)
     return ongoing, scheduled, ended
 
+@app.route('/login', methods=['GET','POST'])
+def login():
+    if request.method == 'POST':
+        username = request.form.get('username','').strip()
+        password = request.form.get('password','').strip()
+        row = exec_sql('SELECT id,username,role,password FROM users WHERE username=%s',(username,), fetch=True, one=True)
+        if row and row['password']==password:
+            session['user']={'id':row['id'],'username':row['username'],'role':row['role']}
+            return redirect(url_for('admin' if row['role']=='admin' else 'index'))
+        return render_template('login.html', error='Invalid credentials')
+    return render_template('login.html')
 
-@app.route("/results_excel/<int:eid>")
-@login_required()
-def results_excel(eid):
-    import io
-    from openpyxl import Workbook
-    e = query("SELECT * FROM elections WHERE id=?", (eid,), one=True)
-    if not e:
-        flash("Election not found", "error"); return redirect(url_for("admin"))
-    rows = query("""
-        SELECT c.name, COUNT(v.id) as votes
-        FROM candidates c
-        LEFT JOIN votes v ON v.candidate_id=c.id AND v.election_id=?
-        WHERE c.election_id=?
-        GROUP BY c.id
-        ORDER BY votes DESC, c.name ASC
-    """, (eid, eid))
-    wb = Workbook()
-    ws = wb.active; ws.title = "Results"
-    ws.append(["Election", e["title"] or e["category"]])
-    ws.append(["Start", e["start_time"], "End", e["end_time"]])
-    ws.append([]); ws.append(["Candidate", "Votes"])
-    for r in rows: ws.append([r["name"], r["votes"]])
-    stream = io.BytesIO(); wb.save(stream); stream.seek(0)
-    return (stream.read(), 200, {
-        "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        "Content-Disposition": f"attachment; filename=results_{eid}.xlsx",
-    })
+@app.route('/logout')
+def logout():
+    session.clear()
+    return redirect(url_for('login'))
 
-
-@app.route("/voter")
-@login_required(role="voter")
-def voter_panel():
-    rows = query("SELECT * FROM elections ORDER BY start_time ASC")
+@app.route('/')
+@login_required
+def index():
+    rows = exec_sql('SELECT * FROM elections ORDER BY start_time DESC', fetch=True)
     ongoing, scheduled, ended = classify_elections(rows)
+    return render_template('index.html', ongoing=ongoing, scheduled=scheduled, ended=ended, title='Elections')
 
-    cand_map = {}
-    for e in ongoing:
-        cand_map[e["id"]] = query(
-            "SELECT * FROM candidates WHERE election_id=?", (e["id"],)
-        )
+@app.route('/vote/<int:election_id>', methods=['GET','POST'])
+@login_required
+def vote(election_id):
+    e = exec_sql('SELECT * FROM elections WHERE id=%s',(election_id,), fetch=True, one=True)
+    if not e:
+        abort(404)
+    now = now_utc()
+    if not (e['start_time'] <= now <= e['end_time']):
+        return redirect(url_for('index'))
+    candidates = exec_sql('SELECT * FROM candidates WHERE election_id=%s ORDER BY id',(election_id,), fetch=True)
+    if request.method == 'POST':
+        cid = int(request.form.get('candidate_id'))
+        uid = session['user']['id']
+        exists = exec_sql('SELECT id FROM votes WHERE voter_id=%s AND election_id=%s',(uid,election_id), fetch=True, one=True)
+        if not exists:
+            exec_sql('INSERT INTO votes(voter_id,candidate_id,election_id) VALUES (%s,%s,%s)',(uid,cid,election_id))
+            exec_sql('UPDATE candidates SET votes=votes+1 WHERE id=%s',(cid,))
+        return render_template('vote.html', e=e, candidates=candidates, voted=True)
+    return render_template('vote.html', e=e, candidates=candidates)
 
-    return render_template(
-        "voter.html",
-        ongoing=ongoing,
-        scheduled=scheduled,
-        ended=ended,
-        cand_map=cand_map,
+@app.route('/admin')
+@admin_required
+def admin():
+    rows = exec_sql('SELECT * FROM elections ORDER BY start_time DESC', fetch=True)
+    ongoing, scheduled, ended = classify_elections(rows)
+    return render_template('index.html', ongoing=ongoing, scheduled=scheduled, ended=ended, title='Admin')
+
+@app.route('/schedule', methods=['GET','POST'])
+@admin_required
+def schedule():
+    created=False
+    if request.method=='POST':
+        title=request.form['title'].strip()
+        category=request.form['category'].strip()
+        limit=int(request.form['candidate_limit'])
+        st=parse_ist_local_to_utc(request.form['start_time'])
+        en=parse_ist_local_to_utc(request.form['end_time'])
+        exec_sql('INSERT INTO elections(title,category,start_time,end_time,candidate_limit) VALUES (%s,%s,%s,%s,%s)',(title,category,st,en,limit))
+        created=True
+    return render_template('schedule.html', created=created)
+
+@app.route('/results')
+@admin_required
+def results():
+    sql = (
+    "SELECT e.title AS election_title, c.name AS candidate_name, c.votes AS votes "
+    "FROM candidates c JOIN elections e ON e.id=c.election_id "
+    "WHERE e.end_time < NOW() ORDER BY e.end_time DESC, votes DESC, candidate_name"
     )
+    rows = exec_sql(sql, fetch=True)
+    return render_template('results.html', rows=rows)
+
+@app.route('/export.xlsx')
+@admin_required
+def export_excel():
+    rows = exec_sql('SELECT * FROM elections ORDER BY start_time DESC', fetch=True)
+    ongoing, scheduled, ended = classify_elections(rows)
+    wb = Workbook()
+    for name, data in (('Ongoing',ongoing),('Scheduled',scheduled),('Ended',ended)):
+        ws = wb.create_sheet(title=name)
+        ws.append(['ID','Title','Category','Start (UTC)','End (UTC)','Candidate Limit'])
+        for e in data:
+            ws.append([e['id'], e['title'], e['category'], e['start_time'], e['end_time'], e['candidate_limit']])
+    if 'Sheet' in wb.sheetnames: del wb['Sheet']
+    bio=BytesIO(); wb.save(bio); bio.seek(0)
+    return send_file(bio, as_attachment=True, download_name='elections.xlsx', mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+if __name__=='__main__':
+    app.run(debug=True, port=5000)

@@ -1,29 +1,15 @@
-{% extends "base.html" %}
-{% block content %}
-<h2>Dashboard</h2>
-<div class="grid">
-  <div class="card">
-    {% if user %}
-      <p class="muted">Logged in as {{ user.username }} ({{ user.role }})</p>
-      {% if user.role == 'admin' %}
-        <a class="btn primary" href="{{ url_for('admin') }}">Open Admin</a>
-      {% else %}
-        <a class="btn primary" href="{{ url_for('voter_panel') }}">Open Voter Panel</a>
-      {% endif %}
-    {% else %}
-      <p>Welcome! Please login or sign up to continue.</p>
-    {% endif %}
-  </div>
-  <div class="card">
-    <h3>Recent Elections</h3>
-    <ul>
-      {% for e in elections %}
-        <li><strong>{{ e.title or e.category }}</strong> • {{ e.category }} • {{ e.year or "YYYY" }}<br>
-            <span class="muted"><span class="utc-time">{{ e.start_time }}</span> → <span class="utc-time">{{ e.end_time }}</span></span></li>
-      {% else %}
-        <li class="muted">No elections scheduled yet.</li>
-      {% endfor %}
-    </ul>
-  </div>
+{% extends "base.html" %}{% block content %}
+<h3 class="mb-3">Elections</h3>
+<div class="row g-3">
+  <div class="col-lg-4"><div class="card p-3"><h5>Ongoing</h5>
+    {% for e in ongoing %}<div class="border rounded p-2 mb-2"><b>{{ e.title }}</b><div class="small">{{ e.start_time|istfmt }} → {{ e.end_time|istfmt }}</div>
+    <a class="btn btn-sm btn-accent mt-1" href="{{ url_for('vote', election_id=e.id) }}">Vote</a></div>{% else %}<div class="text-secondary">None</div>{% endfor %}
+  </div></div>
+  <div class="col-lg-4"><div class="card p-3"><h5>Scheduled</h5>
+    {% for e in scheduled %}<div class="border rounded p-2 mb-2"><b>{{ e.title }}</b><div class="small">{{ e.start_time|istfmt }} → {{ e.end_time|istfmt }}</div></div>{% else %}<div class="text-secondary">None</div>{% endfor %}
+  </div></div>
+  <div class="col-lg-4"><div class="card p-3"><h5>Ended</h5>
+    {% for e in ended %}<div class="border rounded p-2 mb-2"><b>{{ e.title }}</b><div class="small">{{ e.start_time|istfmt }} → {{ e.end_time|istfmt }}</div></div>{% else %}<div class="text-secondary">None</div>{% endfor %}
+  </div></div>
 </div>
 {% endblock %}

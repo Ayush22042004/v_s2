@@ -1,0 +1,6 @@
+{% extends "base.html" %}{% block content %}
+<h4>Results (Admin)</h4>
+<table class="table table-dark table-striped"><thead><tr><th>Election</th><th>Candidate</th><th>Votes</th></tr></thead>
+<tbody>{% for r in rows %}<tr><td>{{ r.election_title }}</td><td>{{ r.candidate_name }}</td><td>{{ r.votes }}</td></tr>{% else %}
+<tr><td colspan=3 class="text-center text-secondary">No results yet</td></tr>{% endfor %}</tbody></table>
+{% endblock %}

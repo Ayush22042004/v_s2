@@ -1,0 +1,1 @@
+function ok(m){alert(m);}; function togglePassword(id){var i=document.getElementById(id);i.type=i.type==='password'?'text':'password';}

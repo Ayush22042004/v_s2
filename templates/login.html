@@ -1,14 +1,12 @@
-{% extends "base.html" %}
-{% block content %}
-<div class="auth-card card">
-  <h2>Login</h2>
-  <form method="POST">
-    <input name="username" placeholder="Username" required>
-    <input type="password" name="password" placeholder="Password" required>
-    <button class="btn primary" type="submit">Login</button>
-  <button type="button" id="pw-toggle" class="btn small" style="margin-top:8px">Show/Hide</button>
-</form>
-</div>
+{% extends "base.html" %}{% block content %}
+<div class="row justify-content-center"><div class="col-md-5"><div class="card p-3">
+<h4>Login</h4>
+{% if error %}<div class="alert alert-danger py-2">{{ error }}</div>{% endif %}
+<form method="post">
+  <div class="mb-3"><label class="form-label">Username</label><input name="username" class="form-control" required></div>
+  <div class="mb-3"><label class="form-label">Password</label>
+    <div class="input-group"><input id="pwd" name="password" type="password" class="form-control" required>
+    <button class="btn btn-outline-secondary" type="button" onclick="togglePassword('pwd')">Show</button></div></div>
+  <button class="btn btn-accent w-100">Sign in</button>
+</form></div></div></div>
 {% endblock %}
-
-<script>document.addEventListener("click",e=>{if(e.target&&e.target.id==="pw-toggle"){const i=document.getElementById("pw");i.type=(i.type==="password"?"text":"password");}});</script>
