@@ -1,3 +1,4 @@
+from db_pg import get_conn, exec_sql, migrate_and_seed, parse_ist_local_to_utc, now_utc, install_jinja_filters
 
 import os
 import sqlite3
@@ -14,6 +15,10 @@ APP_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.environ.get("DB_PATH", os.path.join(APP_DIR, "voting.db"))
 
 app = Flask(__name__)
+
+app = install_jinja_filters(app)
+# Auto-migrate + seed admin
+migrate_and_seed()
 
 # ---- Time helpers ----
 from datetime import timezone, datetime
