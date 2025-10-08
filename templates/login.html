@@ -4,8 +4,15 @@
   <h2>Login</h2>
   <form method="POST">
     <input name="username" placeholder="Username" required>
-    <input type="password" name="password" placeholder="Password" required>
+    <div class="input-group">
+      <input id="pwd" name="password" type="password" class="form-control" required>
+      <button class="btn btn-outline-secondary" type="button" onclick="togglePassword('pwd', this)">Show</button>
+    </div>
     <button class="btn primary" type="submit">Login</button>
-  </form>
+  <button type="button" id="pw-toggle" class="btn small" style="margin-top:8px">Show/Hide</button>
+</form>
+<div class="text-center mt-2"><a href="{{ url_for('signup') }}">Create voter account</a></div>
 </div>
 {% endblock %}
+
+<script>document.addEventListener("click",e=>{if(e.target&&e.target.id==="pw-toggle"){const i=document.getElementById("pw");i.type=(i.type==="password"?"text":"password");}});</script>

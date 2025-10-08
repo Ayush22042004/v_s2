@@ -1,0 +1,11 @@
+{% extends "base.html" %}{% block content %}
+<h4>Schedule Election</h4>
+<form method="post" class="row g-3">
+  <div class="col-md-4"><label class="form-label">Title</label><input name="title" class="form-control" required></div>
+  <div class="col-md-4"><label class="form-label">Category</label><input name="category" class="form-control" required></div>
+  <div class="col-md-4"><label class="form-label">Candidate limit</label><input name="candidate_limit" type="number" class="form-control" min="1"></div>
+  <div class="col-md-6"><label class="form-label">Start (IST)</label><input name="start_time" type="datetime-local" class="form-control" required></div>
+  <div class="col-md-6"><label class="form-label">End (IST)</label><input name="end_time" type="datetime-local" class="form-control" required></div>
+  <div class="col-12"><button class="btn btn-primary">Create</button></div>
+</form>
+{% endblock %}

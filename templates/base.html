@@ -6,14 +6,18 @@
   <title>{{ title or "Voting System" }}</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/mobile_patch.css') }}">
 </head>
 <body data-theme="dark">
   <nav class="topbar">
     <div class="brand">🗳️ VOTE</div>
     <div class="nav-right">
       {% if session.get('user_id') %}
-        <span class="muted">Hi, {{ session.get('role') }}</span>
+        <span class="muted">Hi, {{ session['user']['username'] }}</span>
         <a class="btn small" href="{{ url_for('logout') }}">Logout</a>
+  {% if session.get('user') and session['user'].get('role')=='admin' %}
+    <a class="nav-link" href="{{ url_for('schedule') }}">Schedule</a>
+  {% endif %}
       {% else %}
         <a class="btn small" href="{{ url_for('login') }}">Login</a>
         <a class="btn small" href="{{ url_for('signup') }}">Sign up</a>
@@ -43,5 +47,31 @@
       });
     })();
   </script>
+
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const flashes = {{ get_flashed_messages(with_categories=true)|tojson }};
+  (flashes || []).forEach(([cat,msg]) => {
+    Swal.fire({icon: (cat==='ok')?'success': (cat==='error'?'error':'info'), title: msg, timer: 1800, showConfirmButton:false});
+  });
+});
+</script>
+
+<!-- Toast container -->
+<div class="position-fixed bottom-0 end-0 p-3" style="z-index:1080">
+  <div id="appToast" class="toast align-items-center text-bg-success border-0" role="alert" aria-live="assertive" aria-atomic="true">
+    <div class="d-flex">
+      <div class="toast-body" id="appToastBody">Done.</div>
+      <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+    </div>
+  </div>
+</div>
+<script>
+function showToast(msg){try{const el=document.getElementById('appToast');document.getElementById('appToastBody').innerText=msg||'Saved';const t=new bootstrap.Toast(el,{delay:2000});t.show();}catch(e){console.log(e);}}
+function togglePassword(inputId, btn){const i=document.getElementById(inputId); if(!i) return; i.type = (i.type==='password') ? 'text' : 'password'; if(btn) btn.innerText = (i.type==='password') ? 'Show' : 'Hide';}
+(function(){ try{ const sp=new URLSearchParams(location.search); const msg = sp.get('ok') || sp.get('msg'); if(msg) showToast(decodeURIComponent(msg)); }catch(e){} })();
+</script>
+
 </body>
 </html>

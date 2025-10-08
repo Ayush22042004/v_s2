@@ -1,0 +1,6 @@
+{% if session.get('user') and session['user']['role'] == 'admin' %}
+  <li class="nav-item"><a class="nav-link" href="{{ url_for('admin') }}">Dashboard</a></li>
+  <li class="nav-item"><a class="nav-link" href="{{ url_for('schedule') }}">Schedule</a></li>
+  <li class="nav-item"><a class="nav-link" href="{{ url_for('results') }}">Results</a></li>
+  <li class="nav-item"><a class="nav-link" href="{{ url_for('export_excel') }}">Export Excel</a></li>
+{% endif %}

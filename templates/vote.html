@@ -1,0 +1,7 @@
+{% extends "base.html" %}{% block content %}
+<h4>{{ e.title }} — Vote</h4><div class="small mb-2">{{ e.start_time|istfmt }} → {{ e.end_time|istfmt }}</div>
+<form method="post" class="vstack gap-2">{% for c in candidates %}
+<label class="border rounded p-2"><input type="radio" name="candidate_id" value="{{ c.id }}" required> {{ c.name }}</label>
+{% endfor %}<button class="btn btn-accent mt-2">Submit Vote</button></form>
+{% if voted %}<script>ok("Vote submitted!")</script>{% endif %}
+{% endblock %}

@@ -14,6 +14,26 @@ APP_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.environ.get("DB_PATH", os.path.join(APP_DIR, "voting.db"))
 
 app = Flask(__name__)
+
+# ---- Time helpers ----
+from datetime import timezone, datetime
+def parse_ist_local_to_utc(dt_local_str: str):
+    dt_naive = datetime.fromisoformat(dt_local_str)
+    dt_ist = dt_naive.replace(tzinfo=IST)
+    return dt_ist.astimezone(timezone.utc)
+
+@app.template_filter('istfmt')
+def istfmt(value):
+    try:
+        if value is None:
+            return ''
+        dt = value if not isinstance(value, str) else datetime.fromisoformat(value.replace('Z',''))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(IST).strftime('%d %b %Y, %I:%M %p IST')
+    except Exception:
+        return str(value)
+
 app.secret_key = os.environ.get("SECRET_KEY", "dev-key")
 
 # ---------------- DB Helpers ----------------
@@ -305,6 +325,83 @@ def results():
     """, (e["id"], e["id"]))
     results = [{"name": r["name"], "votes": r["votes"]} for r in rows]
     return render_template("result.html", election=e, results=results, elections=query("SELECT * FROM elections ORDER BY start_time DESC"))
+
+
+
+@app.route('/export.xlsx')
+def export_excel():
+    u = session.get('user')
+    if not u or u.get('role') != 'admin':
+        return redirect(url_for('login'))
+    try:
+        rows = exec_sql('SELECT * FROM elections ORDER BY start_time DESC', fetch=True)
+    except Exception:
+        rows = query('SELECT * FROM elections ORDER BY start_time DESC')
+    now = datetime.now(timezone.utc)
+    ongoing, scheduled, ended = [], [], []
+    for e in rows:
+        st, en = e.get('start_time'), e.get('end_time')
+        if st <= now <= en: ongoing.append(e)
+        elif now < st: scheduled.append(e)
+        else: ended.append(e)
+    wb = Workbook()
+    for name, data in (('Ongoing', ongoing), ('Scheduled', scheduled), ('Ended', ended)):
+        ws = wb.create_sheet(title=name)
+        ws.append(['ID','Title','Category','Start (UTC)','End (UTC)','Candidate Limit'])
+        for ee in data:
+            ws.append([ee.get('id'), ee.get('title'), ee.get('category'), ee.get('start_time'), ee.get('end_time'), ee.get('candidate_limit')])
+    if 'Sheet' in wb.sheetnames: del wb['Sheet']
+    bio = BytesIO(); wb.save(bio); bio.seek(0)
+    return send_file(bio, as_attachment=True, download_name='elections.xlsx',
+                     mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+
+@app.route('/admin/voters')
+def admin_voters():
+    u = session.get('user')
+    if not u or u.get('role') != 'admin':
+        return redirect(url_for('login'))
+    try:
+        voters = exec_sql("SELECT id, username FROM users WHERE role='voter' ORDER BY username", fetch=True)
+        counts = exec_sql("SELECT e.title, COUNT(v.id) AS votes FROM votes v JOIN elections e ON e.id=v.election_id GROUP BY e.title ORDER BY e.title", fetch=True)
+    except Exception:
+        voters = query("SELECT id, username FROM users WHERE role='voter' ORDER BY username")
+        counts = query("SELECT e.title, COUNT(v.id) AS votes FROM votes v JOIN elections e ON e.id=v.election_id GROUP BY e.title ORDER BY e.title")
+    return render_template('admin_voters.html', voters=voters, counts=counts)
+
+
+@app.route('/admin/election/<int:election_id>')
+def election_dashboard(election_id):
+    u = session.get('user')
+    if not u or u.get('role') != 'admin':
+        return redirect(url_for('login'))
+    try:
+        e = exec_sql('SELECT * FROM elections WHERE id=%s', (election_id,), fetch=True, one=True)
+        cand = exec_sql('SELECT name, votes FROM candidates WHERE election_id=%s ORDER BY votes DESC, name', (election_id,), fetch=True)
+    except Exception:
+        e = query('SELECT * FROM elections WHERE id=%s', (election_id,))
+        cand = query('SELECT name, votes FROM candidates WHERE election_id=%s ORDER BY votes DESC, name', (election_id,))
+    total = sum([c.get('votes',0) for c in cand]) if cand else 0
+    return render_template('election_dashboard.html', e=e, cand=cand, total=total)
+
+
+@app.route('/schedule', methods=['GET','POST'])
+def schedule():
+    u = session.get('user')
+    if not u or u.get('role') != 'admin':
+        return redirect(url_for('login'))
+    if request.method == 'POST':
+        title = request.form.get('title','').strip()
+        category = request.form.get('category','').strip()
+        limit = request.form.get('candidate_limit') or None
+        try:
+            st = datetime.fromisoformat(request.form.get('start_time')).replace(tzinfo=IST).astimezone(timezone.utc)
+            en = datetime.fromisoformat(request.form.get('end_time')).replace(tzinfo=IST).astimezone(timezone.utc)
+            exec_sql('INSERT INTO elections(title,category,start_time,end_time,candidate_limit) VALUES (%s,%s,%s,%s,%s)', (title, category, st, en, limit))
+            return redirect(url_for('schedule', ok='Election scheduled'))
+        except Exception as e:
+            return render_template('schedule.html', error=str(e))
+    return render_template('schedule.html')
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
