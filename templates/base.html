@@ -13,7 +13,15 @@
     <div class="brand">🗳️ VOTE</div>
     <div class="nav-right">
       {% if session.get('user_id') %}
-        <span class="muted">Hi, {{ session['user']['username'] }}</span>
+        <span class="muted">Hi, <span class="muted">
+  {% if session.get('user') and session['user'].get('username') %}
+    Hi, {{ session['user'].get('username') }}
+  {% elif session.get('username') %}
+    Hi, {{ session['username'] }}
+  {% else %}
+    Hi, Guest
+  {% endif %}
+</span></span>
         <a class="btn small" href="{{ url_for('logout') }}">Logout</a>
   {% if session.get('user') and session['user'].get('role')=='admin' %}
     <a class="nav-link" href="{{ url_for('schedule') }}">Schedule</a>
