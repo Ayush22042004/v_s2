@@ -240,8 +240,8 @@ def schedule_election():
     year = request.form.get("year","").strip()
     category = request.form.get("category","").strip()
     tz_offset = int(request.form.get("tz_offset","0"))  # minutes from UTC to local (JS getTimezoneOffset)
-    start_raw = (request.form.get("start_time") or "").strip()
-    end_raw   = (request.form.get("end_time") or "").strip()
+    start_raw = (request.form.get('start_time_utc') or "").strip()
+    end_raw   = (request.form.get('end_time_utc') or "").strip()
     start_time_utc = (request.form.get('start_time_utc') or '').strip()
     end_time_utc   = (request.form.get('end_time_utc') or '').strip()
     if not title or not year or not category or not start_raw or not end_raw:
@@ -395,8 +395,8 @@ def schedule():
         category = request.form.get('category','').strip()
         limit = request.form.get('candidate_limit') or None
         try:
-            st = datetime.fromisoformat(request.form.get('start_time')).replace(tzinfo=IST).astimezone(timezone.utc)
-            en = datetime.fromisoformat(request.form.get('end_time')).replace(tzinfo=IST).astimezone(timezone.utc)
+            st = datetime.fromisoformat(request.form.get('start_time_utc')).replace(tzinfo=IST).astimezone(timezone.utc)
+            en = datetime.fromisoformat(request.form.get('end_time_utc')).replace(tzinfo=IST).astimezone(timezone.utc)
             exec_sql('INSERT INTO elections(title,category,start_time,end_time,candidate_limit) VALUES (%s,%s,%s,%s,%s)', (title, category, st, en, limit))
             return redirect(url_for('schedule', ok='Election scheduled'))
         except Exception as e:
