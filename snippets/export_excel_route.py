@@ -1,3 +1,11 @@
+from datetime import datetime, timezone
+
+def parse_utc_iso(dt_str):
+    if not dt_str:
+        return None
+    # Accept ...Z or +00:00
+    return datetime.fromisoformat(dt_str.replace('Z','+00:00'))
+
 from io import BytesIO
 from openpyxl import Workbook
 from flask import send_file, redirect, url_for, session, render_template
