@@ -27,6 +27,30 @@ def parse_utc_or_ist(local_str, utc_str):
     return None
 
 
+from datetime import datetime, timezone
+import pytz
+IST = pytz.timezone("Asia/Kolkata")
+
+def get_any(d, *keys):
+    for k in keys:
+        v = d.get(k)
+        if v:
+            return v
+    return None
+
+def parse_utc_or_ist(local_str, utc_str):
+    if utc_str:
+        return datetime.fromisoformat(utc_str.replace('Z','+00:00'))
+    if local_str:
+        dt = datetime.fromisoformat(local_str)
+        try:
+            dt = IST.localize(dt)
+        except Exception:
+            dt = dt.replace(tzinfo=IST)
+        return dt.astimezone(timezone.utc)
+    return None
+
+
 import os
 import sqlite3
 from datetime import datetime, timezone, timedelta
@@ -273,7 +297,7 @@ def schedule_election():
     start_time_utc = (request.form.get('start_time_utc') or '').strip()
     end_time_utc   = (request.form.get('end_time_utc') or '').strip()
     if not title or not year or not category or not start_raw or not end_raw:
-        flash("All fields are required for scheduling.", "error"); return redirect(url_for("admin"))
+        flash("Missing some fields for scheduling.", "error"); return redirect(url_for("admin"))
     def to_utc_iso(local_str):
         if len(local_str)==16: local_str += ":00"
         dt = datetime.fromisoformat(local_str)  # naive local wall time
