@@ -7,6 +7,26 @@ def parse_utc_iso(dt_str):
     return datetime.fromisoformat(dt_str.replace('Z','+00:00'))
 
 
+from datetime import datetime, timezone
+import pytz
+IST = pytz.timezone("Asia/Kolkata")
+def parse_utc_or_ist(local_str, utc_str):
+    if utc_str:
+        return datetime.fromisoformat(utc_str.replace('Z','+00:00'))
+    if local_str:
+        # Treat local_str (YYYY-MM-DDTHH:MM) as IST
+        try:
+            dt = datetime.fromisoformat(local_str)  # naive
+        except Exception:
+            return None
+        try:
+            dt = IST.localize(dt)
+        except Exception:
+            dt = dt.replace(tzinfo=IST)
+        return dt.astimezone(timezone.utc)
+    return None
+
+
 import os
 import sqlite3
 from datetime import datetime, timezone, timedelta
