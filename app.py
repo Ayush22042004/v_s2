@@ -249,6 +249,8 @@ def candidate_signup():
             flash('Name, username and password are required.', 'error'); return redirect(url_for('candidate_signup'))
         if query('SELECT 1 FROM users WHERE lower(username)=?', (username,), one=True):
             flash('Username already taken.', 'error'); return redirect(url_for('candidate_signup'))
+        if email and query('SELECT 1 FROM users WHERE lower(email)=?', (email.lower(),), one=True):
+            flash('Email already registered.', 'error'); return redirect(url_for('candidate_signup'))
         # create user as candidate
         execute('INSERT INTO users (name,email,username,password,role) VALUES (?,?,?,?,?)',
                 (name, email.lower() if email else None, username, generate_password_hash(password), 'candidate'))
@@ -416,20 +418,62 @@ def schedule_election():
         tz_offset = int(tz_raw) if tz_raw != "" else 0
     except ValueError:
         tz_offset = 0
-    start_raw = get_any(request.form, 'start_time_utc','start_utc','start_time') or ''
-    end_raw = get_any(request.form, 'end_time_utc','end_utc','end_time') or ''
+    
+    # Get start and end times - prefer UTC values sent by JS, fall back to local
     start_time_utc = (request.form.get('start_time_utc') or '').strip()
-    end_time_utc   = (request.form.get('end_time_utc') or '').strip()
-    if not title or not year or not category or not start_raw or not end_raw:
-        flash("Missing some fields for scheduling. (will list missing fields in logs)", "error"); return redirect(url_for("admin"))
-    def to_utc_iso(local_str):
-        if len(local_str)==16: local_str += ":00"
-        dt = datetime.fromisoformat(local_str)  # naive local wall time
-        # JS getTimezoneOffset() is minutes DIFFERENCE from UTC to local (UTC - local)
-        # Correct conversion: UTC = local + offset_minutes
-        utc_dt = dt - timedelta(minutes=tz_offset)
-        return utc_dt.replace(tzinfo=timezone.utc).isoformat()
-    start_time = to_utc_iso(start_raw); end_time = to_utc_iso(end_raw)
+    end_time_utc = (request.form.get('end_time_utc') or '').strip()
+    start_time_local = (request.form.get('start_time') or '').strip()
+    end_time_local = (request.form.get('end_time') or '').strip()
+    
+    # Debug logging
+    print(f"📅 Election Scheduling Debug:")
+    print(f"  Raw start_time (local): {start_time_local}")
+    print(f"  Raw start_time_utc: {start_time_utc}")
+    print(f"  Raw end_time (local): {end_time_local}")
+    print(f"  Raw end_time_utc: {end_time_utc}")
+    print(f"  Timezone offset (minutes): {tz_offset}")
+    
+    if not title or not year or not category:
+        flash("Title, year and category are required.", "error"); return redirect(url_for("admin"))
+    
+    # Parse times - prefer UTC from JS, otherwise convert local to UTC
+    if start_time_utc and start_time_utc.endswith('Z'):
+        # Already in UTC from JS
+        start_time = start_time_utc
+    elif start_time_local:
+        # Convert local to UTC using IST timezone
+        if len(start_time_local) == 16: start_time_local += ":00"
+        try:
+            naive_dt = datetime.fromisoformat(start_time_local)
+            # Treat as IST and convert to UTC
+            ist_dt = IST.localize(naive_dt)
+            start_time = ist_dt.astimezone(timezone.utc).isoformat()
+        except Exception as e:
+            print(f"  ❌ Error parsing start time: {e}")
+            flash("Invalid start time format.", "error"); return redirect(url_for("admin"))
+    else:
+        flash("Start time is required.", "error"); return redirect(url_for("admin"))
+    
+    if end_time_utc and end_time_utc.endswith('Z'):
+        # Already in UTC from JS
+        end_time = end_time_utc
+    elif end_time_local:
+        # Convert local to UTC using IST timezone
+        if len(end_time_local) == 16: end_time_local += ":00"
+        try:
+            naive_dt = datetime.fromisoformat(end_time_local)
+            # Treat as IST and convert to UTC
+            ist_dt = IST.localize(naive_dt)
+            end_time = ist_dt.astimezone(timezone.utc).isoformat()
+        except Exception as e:
+            print(f"  ❌ Error parsing end time: {e}")
+            flash("Invalid end time format.", "error"); return redirect(url_for("admin"))
+    else:
+        flash("End time is required.", "error"); return redirect(url_for("admin"))
+    
+    print(f"  Final start_time (UTC): {start_time}")
+    print(f"  Final end_time (UTC): {end_time}")
+    
     sdt = parse_iso(start_time); edt = parse_iso(end_time)
     if not sdt or not edt or edt <= sdt:
         flash("Invalid time window. End must be after start.", "error"); return redirect(url_for("admin"))

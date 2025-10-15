@@ -20,10 +20,8 @@
           <a class="btn small" href="{{ url_for('candidate_profile') }}">🔔</a>
         {% endif %}
         <span class="muted">Hi, <span class="muted">
-  {% if session.get('user') and session['user'].get('role') == 'admin' %}
-    Admin
-  {% elif session.get('user') and session['user'].get('username') %}
-    {{ session['user'].get('username') }}
+  {% if session.get('role') == 'admin' %}
+    ADMIN
   {% elif session.get('username') %}
     {{ session['username'] }}
   {% else %}
