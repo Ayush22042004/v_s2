@@ -2,6 +2,23 @@
 {% block content %}
 <h2>Admin Dashboard</h2>
 
+{% if session.get('last_scheduled') %}
+<div class="card" style="background-color: #f0f8ff; border: 2px solid #4CAF50; margin-bottom: 16px;">
+  <h3 style="color: #4CAF50;">✓ Last Scheduled Election Debug Info</h3>
+  <table style="width: 100%; border-collapse: collapse;">
+    <tr><td><strong>Title:</strong></td><td>{{ session.last_scheduled.title }}</td></tr>
+    <tr><td><strong>Browser Input (Local):</strong></td><td>{{ session.last_scheduled.start_local }} → {{ session.last_scheduled.end_local }}</td></tr>
+    <tr><td><strong>TZ Offset Submitted:</strong></td><td>{{ session.last_scheduled.tz_offset }} minutes</td></tr>
+    <tr><td><strong>UTC Submitted (JS):</strong></td><td>{{ session.last_scheduled.start_utc_submitted }} → {{ session.last_scheduled.end_utc_submitted }}</td></tr>
+    <tr><td><strong>UTC Stored in DB:</strong></td><td>{{ session.last_scheduled.start_utc_stored }} → {{ session.last_scheduled.end_utc_stored }}</td></tr>
+    <tr><td><strong>IST Computed (Display):</strong></td><td style="color: #4CAF50; font-weight: bold;">{{ session.last_scheduled.start_ist_computed }} → {{ session.last_scheduled.end_ist_computed }}</td></tr>
+  </table>
+  <p style="margin-top: 8px; font-size: 0.9em; color: #666;">
+    <em>Verify that "IST Computed" matches your intended schedule time. Check the "Upcoming" section below.</em>
+  </p>
+</div>
+{% endif %}
+
 <div class="grid">
   <div style="margin-bottom:8px">
     <a class="btn" href="{{ url_for('admin_candidate_applications') }}">Review Candidate Applications</a>
@@ -83,13 +100,16 @@
 (function(){
   function setTz(){
     const tzEls = document.querySelectorAll('input[name="tz_offset"]');
-    tzEls.forEach(e=> e.value = String(new Date().getTimezoneOffset()));
+    // For IST (UTC+5:30), getTimezoneOffset() returns -330
+    const offset = new Date().getTimezoneOffset();
+    tzEls.forEach(e=> e.value = String(offset));
+    console.log('[DEBUG] Timezone offset set to:', offset, 'minutes (negative = ahead of UTC)');
   }
   document.addEventListener('DOMContentLoaded', function(){
     setTz();
     // ensure hidden utc fields on submit
     document.querySelectorAll('form').forEach(function(form){
-      form.addEventListener('submit', function(){
+      form.addEventListener('submit', function(e){
         // update tz just before submit
         setTz();
         form.querySelectorAll('input[type="datetime-local"]').forEach(function(local){
@@ -105,11 +125,23 @@
           if(v){
             const d = new Date(v);
             if(!isNaN(d)){
-              const utc = new Date(d.getTime() - d.getTimezoneOffset()*60000);
-              hidden.value = utc.toISOString();
+              // CORRECT: new Date(datetime-local value) interprets as local time
+              // toISOString() automatically converts to UTC
+              hidden.value = d.toISOString();
+              console.log('[DEBUG] Converting local time:', v);
+              console.log('[DEBUG] Browser local time:', d.toString());
+              console.log('[DEBUG] UTC time:', hidden.value);
             }
           }
         });
+        // Log all form data for debugging
+        const formData = new FormData(form);
+        console.log('[DEBUG] Form submission data:');
+        for(let [key, value] of formData.entries()){
+          if(key.includes('time') || key.includes('tz')){
+            console.log('  ', key, '=', value);
+          }
+        }
       });
     });
   });

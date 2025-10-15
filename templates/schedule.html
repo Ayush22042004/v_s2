@@ -16,13 +16,16 @@
 (function(){
   function setTz(){
     const tzEls = document.querySelectorAll('input[name="tz_offset"]');
-    tzEls.forEach(e=> e.value = String(new Date().getTimezoneOffset()));
+    // For IST (UTC+5:30), getTimezoneOffset() returns -330
+    const offset = new Date().getTimezoneOffset();
+    tzEls.forEach(e=> e.value = String(offset));
+    console.log('[DEBUG] Timezone offset set to:', offset, 'minutes (negative = ahead of UTC)');
   }
   document.addEventListener('DOMContentLoaded', function(){
     setTz();
     // ensure hidden utc fields on submit
     document.querySelectorAll('form').forEach(function(form){
-      form.addEventListener('submit', function(){
+      form.addEventListener('submit', function(e){
         // update tz just before submit
         setTz();
         form.querySelectorAll('input[type="datetime-local"]').forEach(function(local){
@@ -38,11 +41,23 @@
           if(v){
             const d = new Date(v);
             if(!isNaN(d)){
-              const utc = new Date(d.getTime() - d.getTimezoneOffset()*60000);
-              hidden.value = utc.toISOString();
+              // CORRECT: new Date(datetime-local value) interprets as local time
+              // toISOString() automatically converts to UTC
+              hidden.value = d.toISOString();
+              console.log('[DEBUG] Converting local time:', v);
+              console.log('[DEBUG] Browser local time:', d.toString());
+              console.log('[DEBUG] UTC time:', hidden.value);
             }
           }
         });
+        // Log all form data for debugging
+        const formData = new FormData(form);
+        console.log('[DEBUG] Form submission data:');
+        for(let [key, value] of formData.entries()){
+          if(key.includes('time') || key.includes('tz')){
+            console.log('  ', key, '=', value);
+          }
+        }
       });
     });
   });
