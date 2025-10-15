@@ -47,25 +47,62 @@ def install_jinja_filters(app):
 
 def migrate_and_seed():
     schema = '''
-    CREATE TABLE IF NOT EXISTS users(
-      id SERIAL PRIMARY KEY, username TEXT UNIQUE NOT NULL, password TEXT NOT NULL, role TEXT NOT NULL CHECK (role IN ('admin','voter'))
-    );
+        CREATE TABLE IF NOT EXISTS users(
+            id SERIAL PRIMARY KEY,
+            username TEXT UNIQUE NOT NULL,
+            password TEXT NOT NULL,
+            role TEXT NOT NULL CHECK (role IN ('admin','voter','candidate')),
+            name TEXT,
+            email TEXT,
+            id_number TEXT
+        );
     CREATE TABLE IF NOT EXISTS elections(
-      id SERIAL PRIMARY KEY, title TEXT NOT NULL, category TEXT NOT NULL,
-      start_time TIMESTAMPTZ NOT NULL, end_time TIMESTAMPTZ NOT NULL, candidate_limit INTEGER
+      id SERIAL PRIMARY KEY, title TEXT NOT NULL, year INTEGER, category TEXT NOT NULL,
+      start_time TIMESTAMPTZ NOT NULL, end_time TIMESTAMPTZ NOT NULL, created_by INTEGER,
+      candidate_limit INTEGER,
+      FOREIGN KEY(created_by) REFERENCES users(id) ON DELETE SET NULL
     );
-    CREATE TABLE IF NOT EXISTS candidates(
-      id SERIAL PRIMARY KEY, name TEXT NOT NULL, category TEXT NOT NULL,
-      election_id INTEGER REFERENCES elections(id) ON DELETE CASCADE, votes INTEGER DEFAULT 0
-    );
+        CREATE TABLE IF NOT EXISTS candidates(
+            id SERIAL PRIMARY KEY,
+            name TEXT NOT NULL,
+            category TEXT NOT NULL,
+            photo TEXT,
+            election_id INTEGER REFERENCES elections(id) ON DELETE CASCADE,
+            user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            votes INTEGER DEFAULT 0
+        );
+        CREATE TABLE IF NOT EXISTS candidate_applications(
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            election_id INTEGER REFERENCES elections(id) ON DELETE SET NULL,
+            name TEXT NOT NULL,
+            category TEXT NOT NULL,
+            photo TEXT,
+            status TEXT NOT NULL CHECK (status IN ('pending','approved','rejected')) DEFAULT 'pending',
+            applied_at TIMESTAMPTZ,
+            approved_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            approved_at TIMESTAMPTZ,
+            candidate_id INTEGER REFERENCES candidates(id) ON DELETE SET NULL
+        );
     CREATE TABLE IF NOT EXISTS votes(
       id SERIAL PRIMARY KEY, voter_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
       candidate_id INTEGER REFERENCES candidates(id) ON DELETE CASCADE,
       election_id INTEGER REFERENCES elections(id) ON DELETE CASCADE, UNIQUE(voter_id, election_id)
     );
+        CREATE TABLE IF NOT EXISTS notifications(
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            message TEXT NOT NULL,
+            created_at TIMESTAMPTZ,
+            read BOOLEAN DEFAULT FALSE
+        );
     '''
     exec_sql(schema)
     row = exec_sql("SELECT id FROM users WHERE username=%s", ("admin",), fetch=True, one=True)
     if not row:
         exec_sql("INSERT INTO users(username,password,role) VALUES(%s,%s,%s)", ("admin","admin123","admin"))
     print("✅ Migration complete")
+    try:
+        exec_sql("CREATE UNIQUE INDEX IF NOT EXISTS ux_app_user_election ON candidate_applications(user_id, election_id)", fetch=False)
+    except Exception:
+        pass

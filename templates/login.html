@@ -1,6 +1,10 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="auth-card card">
+  <style>
+    /* defensive: hide any stray pw-toggle button if present */
+    #pw-toggle{display:none !important}
+  </style>
   <h2>Login</h2>
   <form method="POST">
     <input name="username" placeholder="Username" required>
@@ -9,10 +13,17 @@
       <button class="btn btn-outline-secondary" type="button" onclick="togglePassword('pwd', this)">Show</button>
     </div>
     <button class="btn primary" type="submit">Login</button>
-  <button type="button" id="pw-toggle" class="btn small" style="margin-top:8px">Show/Hide</button>
-</form>
-<div class="text-center mt-2"><a href="{{ url_for('signup') }}">Create voter account</a></div>
+  </form>
+  <div class="text-center mt-2"><a href="{{ url_for('signup') }}">Create voter account</a></div>
 </div>
+<script>
+// Remove any stray "Show/Hide" buttons that may be injected by other scripts or stale markup.
+document.addEventListener('DOMContentLoaded', function(){
+  try{
+    document.querySelectorAll('button').forEach(function(b){
+      if(b.textContent && b.textContent.trim()==='Show/Hide') b.remove();
+    });
+  }catch(e){console.warn('cleanup script failed', e)}
+});
+</script>
 {% endblock %}
-
-<script>document.addEventListener("click",e=>{if(e.target&&e.target.id==="pw-toggle"){const i=document.getElementById("pw");i.type=(i.type==="password"?"text":"password");}});</script>

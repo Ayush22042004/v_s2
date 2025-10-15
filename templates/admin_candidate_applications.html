@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block content %}
+<h4>Pending Candidate Applications</h4>
+<table>
+  <tr><th>User</th><th>Email</th><th>Name</th><th>Election</th><th>Category</th><th>Applied At</th><th>Actions</th></tr>
+  {% for a in apps %}
+  <tr>
+    <td>{{ a.username }}</td>
+    <td>{{ a.email }}</td>
+    <td>{{ a.name }}</td>
+    <td>{{ a.election_title or 'Any' }}</td>
+    <td>{{ a.category }}</td>
+    <td>{{ a.applied_at }}</td>
+    <td>
+      <form method="post" action="{{ url_for('admin_approve_candidate') }}" style="display:inline">
+        <input type="hidden" name="application_id" value="{{ a.id }}">
+        <button class="btn primary">Approve</button>
+      </form>
+      <form method="post" action="{{ url_for('admin_reject_candidate') }}" style="display:inline">
+        <input type="hidden" name="application_id" value="{{ a.id }}">
+        <button class="btn">Reject</button>
+      </form>
+    </td>
+  </tr>
+  {% else %}
+  <tr><td colspan="7">No pending applications</td></tr>
+  {% endfor %}
+</table>
+{% endblock %}

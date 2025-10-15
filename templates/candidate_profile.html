@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block content %}
+<h4>Your Candidate Profile</h4>
+<h5>Notifications</h5>
+<ul>
+  {% for n in query('SELECT * FROM notifications WHERE user_id=? ORDER BY created_at DESC', (session.user_id,)) %}
+    <li>{{ n.created_at }} - {{ n.message }}</li>
+  {% else %}
+    <li>No notifications</li>
+  {% endfor %}
+</ul>
+<h5>Applications</h5>
+<ul>
+  {% for a in apps %}
+    <li>{{ a.name }} for {{ a.election_title or 'Any' }} — Status: {{ a.status }}{% if a.status=='approved' %} (candidate id: {{ a.candidate_id }}){% endif %}</li>
+  {% else %}
+    <li>No applications found</li>
+  {% endfor %}
+</ul>
+<h5>Approved Candidacies</h5>
+<ul>
+  {% for c in approved %}
+    <li>{{ c.name }} — {{ c.election_title or 'No election' }} (votes: {{ c.votes }})</li>
+  {% else %}
+    <li>None</li>
+  {% endfor %}
+</ul>
+{% endblock %}
