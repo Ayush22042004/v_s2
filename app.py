@@ -1,33 +1,14 @@
-from datetime import datetime, timezone
-
-def parse_utc_iso(dt_str):
-    if not dt_str:
-        return None
-    # Accept ...Z or +00:00
-    return datetime.fromisoformat(dt_str.replace('Z','+00:00'))
-
-
+import os
+import sqlite3
+from flask import Flask, render_template, request, redirect, url_for, session, flash, g
 from datetime import datetime, timezone
 import pytz
-IST = pytz.timezone("Asia/Kolkata")
-def parse_utc_or_ist(local_str, utc_str):
-    if utc_str:
-        return datetime.fromisoformat(utc_str.replace('Z','+00:00'))
-    if local_str:
-        # Treat local_str (YYYY-MM-DDTHH:MM) as IST
-        try:
-            dt = datetime.fromisoformat(local_str)  # naive
-except Exception:
-    pass
 
-# --- timezone & parsing helpers (added) ---
-import pytz
-IST = pytz.timezone("Asia/Kolkata")
-from datetime import datetime, timezone as _timezone
+app = Flask(__name__)
+app.secret_key = os.environ.get('SECRET_KEY', 'dev-secret')
 
-def get_any(d, *keys):
-    for k in keys:
-        v = d.get(k)
+IST = pytz.timezone('Asia/Kolkata')
+
         if v:
             return v
     return None
