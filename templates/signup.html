@@ -1,14 +1,21 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="auth-card card">
-  <h2>Create Voter Account</h2>
+  <h2>Create Account</h2>
+  <p>Choose account type:</p>
+  <div style="display:flex;gap:8px;margin-bottom:12px;">
+    <a class="btn" href="#voter">Voter (Register below)</a>
+    <a class="btn primary" href="{{ url_for('candidate_signup') }}">Candidate (Apply Now)</a>
+  </div>
+
+  <h3 id="voter">Voter Registration</h3>
   <form method="POST">
     <input name="name" placeholder="Full name" required>
     <input name="email" placeholder="Email (optional)">
     <input name="username" placeholder="Username" required>
     <input type="password" name="password" placeholder="Password" required>
     <input name="id_number" placeholder="ID number (voter only)" required>
-    <button class="btn primary" type="submit">Register</button>
+    <button class="btn primary" type="submit">Register as Voter</button>
   </form>
 </div>
 {% endblock %}

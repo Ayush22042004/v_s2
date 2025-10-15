@@ -1,14 +1,86 @@
 import os
 import sqlite3
-from flask import Flask, render_template, request, redirect, url_for, session, flash, g
-from datetime import datetime, timezone
+from flask import Flask, render_template, request, redirect, url_for, flash, session
+from functools import wraps
+from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.utils import secure_filename
+from datetime import datetime, timezone, timedelta
 import pytz
+from io import BytesIO
+from openpyxl import Workbook
+from flask import send_file
+import smtplib
+from email.message import EmailMessage
 
-app = Flask(__name__)
-app.secret_key = os.environ.get('SECRET_KEY', 'dev-secret')
 
-IST = pytz.timezone('Asia/Kolkata')
+def send_email(to_addr, subject, body):
+    """Send email via SMTP. Reads SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS from env.
+    Falls back to printing the message if SMTP is not configured."""
+    smtp_host = os.environ.get('SMTP_HOST')
+    smtp_port = int(os.environ.get('SMTP_PORT', 587)) if os.environ.get('SMTP_PORT') else None
+    smtp_user = os.environ.get('SMTP_USER')
+    smtp_pass = os.environ.get('SMTP_PASS')
+    msg = EmailMessage()
+    msg['Subject'] = subject
+    msg['From'] = os.environ.get('SMTP_FROM', 'no-reply@example.com')
+    msg['To'] = to_addr
+    msg.set_content(body)
+    if smtp_host and smtp_port and smtp_user and smtp_pass:
+        try:
+            with smtplib.SMTP(smtp_host, smtp_port, timeout=10) as s:
+                s.starttls()
+                s.login(smtp_user, smtp_pass)
+                s.send_message(msg)
+        except Exception as e:
+            print('⚠️ send_email failed:', e)
+    else:
+        print('Email (not sent - SMTP not configured) ->', to_addr, subject)
 
+
+def send_notification(user_id, message):
+    try:
+        created_at = datetime.now(timezone.utc).isoformat()
+        execute('INSERT INTO notifications (user_id,message,created_at,read) VALUES (?,?,?,?)', (user_id, message, created_at, 0))
+    except Exception as e:
+        print('⚠️ send_notification failed:', e)
+# timezone helpers
+IST = pytz.timezone("Asia/Kolkata")
+
+# If running in an environment with DATABASE_URL (e.g. Render), prefer PostgreSQL helpers
+DB_ADAPTER = os.environ.get("DATABASE_URL")
+if DB_ADAPTER:
+    try:
+        import db_pg as db_backend
+        # expose functions used across the app
+        get_db = db_backend.get_conn
+        # adapter that converts sqlite-style '?' placeholders to postgres '%s'
+        def _pg_exec_sql(sql, args=(), fetch=False, one=False):
+            if sql and '?' in sql:
+                sql = sql.replace('?', '%s')
+            return db_backend.exec_sql(sql, args, fetch=fetch, one=one)
+
+        exec_sql = _pg_exec_sql
+        query = lambda sql, args=(), one=False: _pg_exec_sql(sql, args, fetch=True, one=one)
+        execute = lambda sql, args=(): _pg_exec_sql(sql, args, fetch=False)
+        now_utc = db_backend.now_utc
+        IST = getattr(db_backend, 'IST', IST)
+    except Exception as e:
+        # fall back to builtin sqlite definitions below; print error for deployment logs
+        print('⚠️ Could not load db_pg adapter for DATABASE_URL:', e)
+        pass
+
+
+def get_db():
+    conn = sqlite3.connect('voting.db')
+    conn.row_factory = sqlite3.Row
+    return conn
+
+# application directory
+APP_DIR = os.path.dirname(os.path.abspath(__file__))
+
+def get_any(d, *keys):
+    for k in keys:
+        v = d.get(k)
         if v:
             return v
     return None
@@ -17,25 +89,22 @@ def parse_utc_or_local_as_ist(utc_str, local_str):
     """Return timezone-aware UTC datetime parsed from utc_str (ISO Z) or local naive string as IST."""
     if utc_str:
         try:
-            return datetime.fromisoformat(utc_str.replace('Z','+00:00')).astimezone(_timezone.utc)
-except Exception:
-    pass
+            return datetime.fromisoformat(utc_str.replace('Z','+00:00')).astimezone(timezone.utc)
+        except Exception:
+            pass
     if local_str:
         try:
             naive = datetime.fromisoformat(local_str)
             try:
                 loc = IST.localize(naive)
-except Exception:
-    pass
+            except Exception:
                 loc = naive.replace(tzinfo=IST)
-            return loc.astimezone(_timezone.utc)
-except Exception:
-    pass
+            return loc.astimezone(timezone.utc)
+        except Exception:
             return None
     return None
 
 def exec_sql(sql, args=(), fetch=False, one=False):
-    """Light wrapper to execute SQL and optionally fetch rows."""
     db = get_db()
     cur = db.execute(sql, args)
     if fetch:
@@ -47,163 +116,27 @@ def exec_sql(sql, args=(), fetch=False, one=False):
         last = cur.lastrowid
         cur.close()
         return last
-# --- end helpers ---
 
-
-            return None
-        try:
-            dt = IST.localize(dt)
-except Exception:
-    pass
-            dt = dt.replace(tzinfo=IST)
-        return dt.astimezone(timezone.utc)
-    return None
-
-
-from datetime import datetime, timezone
-import pytz
-IST = pytz.timezone("Asia/Kolkata")
-
-def get_any(d, *keys):
-    for k in keys:
-        v = d.get(k)
-        if v:
-            return v
-    return None
-
-def parse_utc_or_ist(local_str, utc_str):
-    if utc_str:
-        return datetime.fromisoformat(utc_str.replace('Z','+00:00'))
-    if local_str:
-        dt = datetime.fromisoformat(local_str)
-        try:
-            dt = IST.localize(dt)
-except Exception:
-    pass
-            dt = dt.replace(tzinfo=IST)
-        return dt.astimezone(timezone.utc)
-    return None
-
-
-import os
-import sqlite3
-from datetime import datetime, timezone, timedelta
-from zoneinfo import ZoneInfo
-IST = ZoneInfo('Asia/Kolkata')
-from functools import wraps
-
-from flask import Flask, render_template, request, redirect, url_for, flash, session
-from werkzeug.security import generate_password_hash, check_password_hash
-from werkzeug.utils import secure_filename
-
-APP_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.environ.get("DB_PATH", os.path.join(APP_DIR, "voting.db"))
-
-app = Flask(__name__)
-
-# ---- Time helpers ----
-from datetime import timezone, datetime
-def parse_ist_local_to_utc(dt_local_str: str):
-    dt_naive = datetime.fromisoformat(dt_local_str)
-    dt_ist = dt_naive.replace(tzinfo=IST)
-    return dt_ist.astimezone(timezone.utc)
-
-@app.template_filter('istfmt')
-def istfmt(value):
-    try:
-        if value is None:
-            return ''
-        dt = value if not isinstance(value, str) else datetime.fromisoformat(value.replace('Z',''))
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        return dt.astimezone(IST).strftime('%d %b %Y, %I:%M %p IST')
-except Exception:
-    pass
-        return str(value)
-
-app.secret_key = os.environ.get("SECRET_KEY", "dev-key")
-
-# ---------------- DB Helpers ----------------
-def get_db():
-    db = getattr(app, "_db", None)
-    if db is None:
-        db = sqlite3.connect(DB_PATH, check_same_thread=False)
-        db.row_factory = sqlite3.Row
-        app._db = db
-    return db
-
+# thin wrappers expected by the rest of the code
 def query(sql, args=(), one=False):
-    cur = get_db().execute(sql, args)
-    rows = cur.fetchall()
-    cur.close()
-    return (rows[0] if rows else None) if one else rows
+    return exec_sql(sql, args, fetch=True, one=one)
 
 def execute(sql, args=()):
-    db = get_db()
-    cur = db.execute(sql, args)
-    db.commit()
-    return cur.lastrowid
+    return exec_sql(sql, args, fetch=False)
 
-# -------------- Schema & Migrations --------------
-def ensure_schema():
-    db = get_db()
-    db.execute("""
-    CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT NOT NULL,
-        email TEXT UNIQUE,
-        username TEXT UNIQUE NOT NULL,
-        password TEXT NOT NULL,
-        role TEXT NOT NULL,
-        id_number TEXT
-    )
-    """)
-    db.execute("""
-    CREATE TABLE IF NOT EXISTS elections (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        title TEXT,
-        year INTEGER,
-        category TEXT NOT NULL,
-        start_time TEXT NOT NULL,
-        end_time TEXT NOT NULL,
-        created_by INTEGER,
-        candidate_limit INTEGER
-    )
-    """)
-    db.execute("""
-    CREATE TABLE IF NOT EXISTS candidates (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT NOT NULL,
-        category TEXT,
-        photo TEXT,
-        election_id INTEGER,
-        FOREIGN KEY (election_id) REFERENCES elections(id)
-    )
-    """)
-    db.execute("""
-    CREATE TABLE IF NOT EXISTS votes (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        voter_id INTEGER NOT NULL,
-        candidate_id INTEGER NOT NULL,
-        election_id INTEGER NOT NULL,
-        timestamp TEXT NOT NULL,
-        FOREIGN KEY (voter_id) REFERENCES users(id),
-        FOREIGN KEY (candidate_id) REFERENCES candidates(id),
-        FOREIGN KEY (election_id) REFERENCES elections(id)
-    )
-    """)
-    db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_votes_unique ON votes(voter_id, election_id)")
-    db.commit()
+# Flask app init
+app = Flask(__name__)
+app.secret_key = os.environ.get('SECRET_KEY', 'devkey')
 
-def seed_admin():
-    admin = query("SELECT id FROM users WHERE role='admin' LIMIT 1", one=True)
-    if not admin:
-        execute("INSERT INTO users (name,email,username,password,role) VALUES (?,?,?,?,?)",
-                ("Admin","admin@example.com","admin", generate_password_hash("admin123"), "admin"))
-
-with app.app_context():
-    ensure_schema()
-    seed_admin()
+# Optional startup migration for Postgres when running on Render.
+# Set RUN_MIGRATE=true in the environment to run migrations once at startup.
+if DB_ADAPTER and os.environ.get('RUN_MIGRATE', '').lower() in ('1', 'true', 'yes'):
+    try:
+        import db_pg
+        db_pg.migrate_and_seed()
+        print('✅ DB migration executed at startup')
+    except Exception as e:
+        print('⚠️ DB migration failed at startup:', e)
 
 # -------------- Auth helpers --------------
 def login_required(role=None):
@@ -227,22 +160,31 @@ def parse_iso(s):
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
         return dt.astimezone(timezone.utc)
-except Exception:
-    pass
+    except Exception:
+        pass
         return None
 
 
-def to_ist(dt):
-    try:
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        return dt.astimezone(IST)
-except Exception:
-    pass
-        return dt
+# to_ist is defined later after helpers; remove this duplicate to avoid confusion
 
 def now_utc():
     return datetime.now(timezone.utc)
+
+@app.context_processor
+def inject_unread_notifications():
+    try:
+        uid = session.get('user_id')
+        if not uid:
+            return {}
+        row = query('SELECT COUNT(*) AS c FROM notifications WHERE user_id=? AND read=0', (uid,), one=True)
+        return {'unread_notifications': row['c'] if row else 0}
+    except Exception:
+        return {'unread_notifications': 0}
+
+
+@app.route('/health')
+def health():
+    return {'status': 'ok'}, 200
 
 # -------------- Routes --------------
 @app.route("/")
@@ -281,6 +223,135 @@ def login():
             flash("Welcome back!", "ok"); return redirect(url_for("index"))
         flash("Invalid credentials.", "error")
     return render_template("login.html")
+
+
+@app.route('/candidate_signup', methods=['GET','POST'])
+def candidate_signup():
+    if request.method == 'POST':
+        name = request.form.get('name','').strip()
+        email = (request.form.get('email','').strip() or None)
+        username = request.form.get('username','').strip().lower()
+        password = request.form.get('password','')
+        category = request.form.get('category','').strip() or 'General'
+        election_id = request.form.get('election_id')
+        if not name or not username or not password:
+            flash('Name, username and password are required.', 'error'); return redirect(url_for('candidate_signup'))
+        if query('SELECT 1 FROM users WHERE lower(username)=?', (username,), one=True):
+            flash('Username already taken.', 'error'); return redirect(url_for('candidate_signup'))
+        # create user as candidate
+        execute('INSERT INTO users (name,email,username,password,role) VALUES (?,?,?,?,?)',
+                (name, email.lower() if email else None, username, generate_password_hash(password), 'candidate'))
+        user = query('SELECT * FROM users WHERE lower(username)=?', (username,), one=True)
+        user_id = user['id']
+        # prevent duplicate application for same user+election
+        if election_id:
+            exists = query('SELECT 1 FROM candidate_applications WHERE user_id=? AND election_id=? AND status IN ("pending","approved")', (user_id, election_id), one=True)
+            if exists:
+                flash('You have already applied for this election.', 'warn'); return redirect(url_for('candidate_signup'))
+        # handle photo
+        photo_path=None; f=request.files.get('photo')
+        if f and f.filename:
+            # basic validation: extension and mimetype, size limit 5MB
+            allowed_ext = {'png','jpg','jpeg','gif'}
+            name_parts = secure_filename(f.filename).rsplit('.', 1)
+            ext = name_parts[1].lower() if len(name_parts) > 1 else ''
+            if ext not in allowed_ext or (f.mimetype and not f.mimetype.startswith('image')):
+                flash('Invalid photo file. Allowed: png,jpg,jpeg,gif', 'error'); return redirect(url_for('candidate_signup'))
+            data = f.read()
+            if len(data) > 5*1024*1024:
+                flash('Photo too large (max 5MB).', 'error'); return redirect(url_for('candidate_signup'))
+            # persist file
+            filename = secure_filename(f.filename)
+            uploads_dir = os.path.join(APP_DIR, 'static', 'uploads'); os.makedirs(uploads_dir, exist_ok=True)
+            with open(os.path.join(uploads_dir, filename), 'wb') as out:
+                out.write(data)
+            photo_path=f'uploads/{filename}'
+        applied_at = datetime.now(timezone.utc).isoformat()
+        execute('INSERT INTO candidate_applications (user_id,election_id,name,category,photo,status,applied_at) VALUES (?,?,?,?,?,?,?)',
+                (user_id, election_id, name, category, photo_path, 'pending', applied_at))
+        flash('Application submitted. Awaiting admin approval.', 'ok'); return redirect(url_for('login'))
+    elections = query('SELECT * FROM elections ORDER BY start_time DESC')
+    return render_template('candidate_signup.html', elections=elections)
+
+
+@app.route('/candidate/profile')
+@login_required(role='candidate')
+def candidate_profile():
+    user_id = session.get('user_id')
+    # mark notifications read
+    try:
+        execute('UPDATE notifications SET read=1 WHERE user_id=?', (user_id,))
+    except Exception:
+        pass
+    apps = query('SELECT a.*, e.title AS election_title FROM candidate_applications a LEFT JOIN elections e ON e.id=a.election_id WHERE a.user_id=? ORDER BY a.applied_at DESC', (user_id,))
+    approved = query('SELECT c.*, e.title AS election_title FROM candidates c LEFT JOIN elections e ON e.id=c.election_id WHERE c.user_id=?', (user_id,))
+    return render_template('candidate_profile.html', apps=apps, approved=approved)
+
+
+@app.route('/admin/candidate_applications')
+@login_required(role='admin')
+def admin_candidate_applications():
+    rows = query("SELECT a.*, u.username, u.email, e.title AS election_title FROM candidate_applications a JOIN users u ON u.id=a.user_id LEFT JOIN elections e ON e.id=a.election_id WHERE a.status='pending' ORDER BY a.applied_at ASC")
+    return render_template('admin_candidate_applications.html', apps=rows)
+
+
+@app.route('/admin/approve_candidate', methods=['POST'])
+@login_required(role='admin')
+def admin_approve_candidate():
+    app_id = request.form.get('application_id')
+    if not app_id:
+        flash('Invalid request.', 'error'); return redirect(url_for('admin_candidate_applications'))
+    a = query('SELECT * FROM candidate_applications WHERE id=?', (app_id,), one=True)
+    if not a:
+        flash('Application not found.', 'error'); return redirect(url_for('admin_candidate_applications'))
+    # create candidate row
+    photo = a['photo']
+    election_id = a['election_id']
+    name = a['name']
+    category = a['category']
+    user_id = a['user_id']
+    execute('INSERT INTO candidates (name,category,photo,election_id,user_id) VALUES (?,?,?,?,?)', (name, category, photo, election_id, user_id))
+    candidate_id = query('SELECT id FROM candidates WHERE user_id=? ORDER BY id DESC', (user_id,), one=True)['id']
+    # update application
+    approved_at = datetime.now(timezone.utc).isoformat()
+    execute('UPDATE candidate_applications SET status=?, approved_by=?, approved_at=?, candidate_id=? WHERE id=?', ('approved', session.get('user_id'), approved_at, candidate_id, app_id))
+    # notify candidate if email available
+    try:
+        user = query('SELECT * FROM users WHERE id=?', (user_id,), one=True)
+        if user:
+            if user.get('email'):
+                send_email(user.get('email'), 'Your candidacy has been approved', f"Hello {user.get('name')},\n\nYour application for '{name}' has been approved and you are now registered as a candidate for the election.\n\nRegards")
+            # create in-app notification
+            try:
+                send_notification(user['id'], f"Your application for '{name}' was approved.")
+            except Exception:
+                pass
+    except Exception:
+        pass
+    flash('Candidate approved and registered for election.', 'ok'); return redirect(url_for('admin_candidate_applications'))
+
+
+@app.route('/admin/reject_candidate', methods=['POST'])
+@login_required(role='admin')
+def admin_reject_candidate():
+    app_id = request.form.get('application_id')
+    if not app_id:
+        flash('Invalid request.', 'error'); return redirect(url_for('admin_candidate_applications'))
+    execute('UPDATE candidate_applications SET status=? WHERE id=?', ('rejected', app_id))
+    try:
+        a = query('SELECT * FROM candidate_applications WHERE id=?', (app_id,), one=True)
+        if a:
+            user = query('SELECT * FROM users WHERE id=?', (a['user_id'],), one=True)
+            if user:
+                if user.get('email'):
+                    send_email(user.get('email'), 'Your candidacy has been rejected', f"Hello {user.get('name')},\n\nYour application for '{a['name']}' was rejected by the admin.\n\nRegards")
+                try:
+                    send_notification(user['id'], f"Your application for '{a['name']}' was rejected by the admin.")
+                except Exception:
+                    pass
+    except Exception:
+        pass
+    flash('Application rejected.', 'ok'); return redirect(url_for('admin_candidate_applications'))
 
 @app.route("/logout")
 def logout():
@@ -328,7 +399,12 @@ def schedule_election():
     title = request.form.get("title","").strip()
     year = request.form.get("year","").strip()
     category = request.form.get("category","").strip()
-    tz_offset = int(request.form.get("tz_offset","0"))  # minutes from UTC to local (JS getTimezoneOffset)
+    # minutes from UTC to local (JS getTimezoneOffset). Accept empty or invalid input gracefully.
+    tz_raw = (request.form.get("tz_offset") or "").strip()
+    try:
+        tz_offset = int(tz_raw) if tz_raw != "" else 0
+    except ValueError:
+        tz_offset = 0
     start_raw = get_any(request.form, 'start_time_utc','start_utc','start_time') or ''
     end_raw = get_any(request.form, 'end_time_utc','end_utc','end_time') or ''
     start_time_utc = (request.form.get('start_time_utc') or '').strip()
@@ -373,8 +449,8 @@ def to_ist(dt):
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
         return dt.astimezone(IST)
-except Exception:
-    pass
+    except Exception:
+        pass
         return dt
 
 
@@ -420,13 +496,12 @@ def results():
 
 @app.route('/export.xlsx')
 def export_excel():
-    u = session.get('user')
-    if not u or u.get('role') != 'admin':
+    if session.get('user_id') is None or session.get('role') != 'admin':
         return redirect(url_for('login'))
     try:
         rows = exec_sql('SELECT * FROM elections ORDER BY start_time DESC', fetch=True)
-except Exception:
-    pass
+    except Exception:
+        pass
         rows = query('SELECT * FROM elections ORDER BY start_time DESC')
     now = datetime.now(timezone.utc)
     ongoing, scheduled, ended = [], [], []
@@ -448,40 +523,36 @@ except Exception:
 
 
 @app.route('/admin/voters')
+@login_required(role="admin")
 def admin_voters():
-    u = session.get('user')
-    if not u or u.get('role') != 'admin':
-        return redirect(url_for('login'))
+    # login_required decorator already enforces admin access
     try:
         voters = exec_sql("SELECT id, username FROM users WHERE role='voter' ORDER BY username", fetch=True)
         counts = exec_sql("SELECT e.title, COUNT(v.id) AS votes FROM votes v JOIN elections e ON e.id=v.election_id GROUP BY e.title ORDER BY e.title", fetch=True)
-except Exception:
-    pass
+    except Exception:
+        pass
         voters = query("SELECT id, username FROM users WHERE role='voter' ORDER BY username")
         counts = query("SELECT e.title, COUNT(v.id) AS votes FROM votes v JOIN elections e ON e.id=v.election_id GROUP BY e.title ORDER BY e.title")
     return render_template('admin_voters.html', voters=voters, counts=counts)
 
 
 @app.route('/admin/election/<int:election_id>')
+@login_required(role="admin")
 def election_dashboard(election_id):
-    u = session.get('user')
-    if not u or u.get('role') != 'admin':
-        return redirect(url_for('login'))
+    # login_required decorator already enforces admin access
     try:
-        e = exec_sql('SELECT * FROM elections WHERE id=%s', (election_id,), fetch=True, one=True)
-        cand = exec_sql('SELECT name, votes FROM candidates WHERE election_id=%s ORDER BY votes DESC, name', (election_id,), fetch=True)
-except Exception:
-    pass
-        e = query('SELECT * FROM elections WHERE id=%s', (election_id,))
-        cand = query('SELECT name, votes FROM candidates WHERE election_id=%s ORDER BY votes DESC, name', (election_id,))
+        e = exec_sql('SELECT * FROM elections WHERE id=?', (election_id,), fetch=True, one=True)
+        cand = exec_sql('SELECT name, votes FROM candidates WHERE election_id=? ORDER BY votes DESC, name', (election_id,), fetch=True)
+    except Exception:
+        e = query('SELECT * FROM elections WHERE id=?', (election_id,))
+        cand = query('SELECT name, votes FROM candidates WHERE election_id=? ORDER BY votes DESC, name', (election_id,))
     total = sum([c.get('votes',0) for c in cand]) if cand else 0
     return render_template('election_dashboard.html', e=e, cand=cand, total=total)
 
 
 @app.route('/schedule', methods=['GET','POST'])
 def schedule():
-    u = session.get('user')
-    if not u or u.get('role') != 'admin':
+    if session.get('user_id') is None or session.get('role') != 'admin':
         return redirect(url_for('login'))
     if request.method == 'POST':
         title = request.form.get('title','').strip()
@@ -490,15 +561,13 @@ def schedule():
         try:
             st = datetime.fromisoformat(request.form.get('start_time_utc')).replace(tzinfo=IST).astimezone(timezone.utc)
             en = datetime.fromisoformat(request.form.get('end_time_utc')).replace(tzinfo=IST).astimezone(timezone.utc)
-            exec_sql('INSERT INTO elections(title,category,start_time,end_time,candidate_limit) VALUES (%s,%s,%s,%s,%s)', (title, category, st, en, limit))
+            exec_sql('INSERT INTO elections(title,category,start_time,end_time,candidate_limit) VALUES (?,?,?,?,?)', (title, category, st, en, limit))
             return redirect(url_for('schedule', ok='Election scheduled'))
         except Exception as e:
             return render_template('schedule.html', error=str(e))
     return render_template('schedule.html')
 
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8080))
-    app.run(host="0.0.0.0", port=port, debug=False)
+# NOTE: the run block is placed at the end of the file (after all helper definitions)
 
 
 @app.template_filter("istfmt")
@@ -507,8 +576,8 @@ def istfmt(value):
         dt = parse_iso(value)
         dt = to_ist(dt)
         return dt.strftime("%d %b %Y, %I:%M %p IST")
-except Exception:
-    pass
+    except Exception:
+        pass
         return value
 
 
@@ -525,7 +594,7 @@ def classify_elections(rows):
 
 
 @app.route("/results_excel/<int:eid>")
-@login_required()
+@login_required(role="admin")
 def results_excel(eid):
     import io
     from openpyxl import Workbook
@@ -572,3 +641,8 @@ def voter_panel():
         ended=ended,
         cand_map=cand_map,
     )
+
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host="0.0.0.0", port=port, debug=False)

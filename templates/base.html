@@ -8,11 +8,17 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <link rel="stylesheet" href="{{ url_for('static', filename='css/mobile_patch.css') }}">
 </head>
-<body data-theme="dark">
+{% set _flashes = get_flashed_messages(with_categories=true) %}
+<body data-theme="dark" data-flashes='{{ _flashes|tojson|e }}'>
   <nav class="topbar">
     <div class="brand">🗳️ VOTE</div>
     <div class="nav-right">
       {% if session.get('user_id') %}
+        {% if unread_notifications and unread_notifications > 0 %}
+          <a class="btn small" href="{{ url_for('candidate_profile') }}">🔔 <span class="badge">{{ unread_notifications }}</span></a>
+        {% else %}
+          <a class="btn small" href="{{ url_for('candidate_profile') }}">🔔</a>
+        {% endif %}
         <span class="muted">Hi, <span class="muted">
   {% if session.get('user') and session['user'].get('username') %}
     Hi, {{ session['user'].get('username') }}
@@ -59,10 +65,13 @@
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script>
 document.addEventListener('DOMContentLoaded', () => {
-  const flashes = {{ get_flashed_messages(with_categories=true)|tojson }};
-  (flashes || []).forEach(([cat,msg]) => {
-    Swal.fire({icon: (cat==='ok')?'success': (cat==='error'?'error':'info'), title: msg, timer: 1800, showConfirmButton:false});
-  });
+  try{
+    const raw = document.body.getAttribute('data-flashes') || '[]';
+    const flashes = JSON.parse(raw);
+    (flashes || []).forEach(([cat,msg]) => {
+      Swal.fire({icon: (cat==='ok')?'success': (cat==='error'?'error':'info'), title: msg, timer: 1800, showConfirmButton:false});
+    });
+  }catch(e){ console.warn('flash parse failed', e); }
 });
 </script>
 

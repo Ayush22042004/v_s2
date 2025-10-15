@@ -1,7 +1,7 @@
 {% extends "base.html" %}{% block content %}
 <h4>Schedule Election</h4>
 <form method="post" class="row g-3">
-<input type='hidden' name='tz_offset' value='' />
+<input type='hidden' name='tz_offset' value='0' />
   <div class="col-md-4"><label class="form-label">Title</label><input name="title" class="form-control" required></div>
   <div class="col-md-4"><label class="form-label">Category</label><input name="category" class="form-control" required></div>
   <div class="col-md-4"><label class="form-label">Candidate limit</label><input name="candidate_limit" type="number" class="form-control" min="1"></div>
@@ -14,29 +14,35 @@
 {% endblock %}
 <script>
 (function(){
-  // set tz_offset on load
-  const tzEls = document.querySelectorAll('input[name="tz_offset"]');
-  tzEls.forEach(e=> e.value = new Date().getTimezoneOffset());
-  // ensure hidden utc fields on submit
-  document.querySelectorAll('form').forEach(function(form){
-    form.addEventListener('submit', function(){
-      form.querySelectorAll('input[type="datetime-local"]').forEach(function(local){
-        if(!local.name) return;
-        let hidden = form.querySelector('input[name="'+local.name+'_utc"]');
-        if(!hidden){
-          hidden = document.createElement('input');
-          hidden.type = 'hidden';
-          hidden.name = local.name + '_utc';
-          form.appendChild(hidden);
-        }
-        const v = local.value;
-        if(v){
-          const d = new Date(v);
-          if(!isNaN(d)){
-            const utc = new Date(d.getTime() - d.getTimezoneOffset()*60000);
-            hidden.value = utc.toISOString();
+  function setTz(){
+    const tzEls = document.querySelectorAll('input[name="tz_offset"]');
+    tzEls.forEach(e=> e.value = String(new Date().getTimezoneOffset()));
+  }
+  document.addEventListener('DOMContentLoaded', function(){
+    setTz();
+    // ensure hidden utc fields on submit
+    document.querySelectorAll('form').forEach(function(form){
+      form.addEventListener('submit', function(){
+        // update tz just before submit
+        setTz();
+        form.querySelectorAll('input[type="datetime-local"]').forEach(function(local){
+          if(!local.name) return;
+          let hidden = form.querySelector('input[name="'+local.name+'_utc"]');
+          if(!hidden){
+            hidden = document.createElement('input');
+            hidden.type = 'hidden';
+            hidden.name = local.name + '_utc';
+            form.appendChild(hidden);
           }
-        }
+          const v = local.value;
+          if(v){
+            const d = new Date(v);
+            if(!isNaN(d)){
+              const utc = new Date(d.getTime() - d.getTimezoneOffset()*60000);
+              hidden.value = utc.toISOString();
+            }
+          }
+        });
       });
     });
   });
