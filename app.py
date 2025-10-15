@@ -17,7 +17,7 @@ def parse_utc_or_ist(local_str, utc_str):
         # Treat local_str (YYYY-MM-DDTHH:MM) as IST
         try:
             dt = datetime.fromisoformat(local_str)  # naive
-        except Exception:
+except Exception:
     pass
 
 # --- timezone & parsing helpers (added) ---
@@ -37,17 +37,19 @@ def parse_utc_or_local_as_ist(utc_str, local_str):
     if utc_str:
         try:
             return datetime.fromisoformat(utc_str.replace('Z','+00:00')).astimezone(_timezone.utc)
-        except Exception:
-            pass
+except Exception:
+    pass
     if local_str:
         try:
             naive = datetime.fromisoformat(local_str)
             try:
                 loc = IST.localize(naive)
-            except Exception:
+except Exception:
+    pass
                 loc = naive.replace(tzinfo=IST)
             return loc.astimezone(_timezone.utc)
-        except Exception:
+except Exception:
+    pass
             return None
     return None
 
@@ -70,7 +72,8 @@ def exec_sql(sql, args=(), fetch=False, one=False):
             return None
         try:
             dt = IST.localize(dt)
-        except Exception:
+except Exception:
+    pass
             dt = dt.replace(tzinfo=IST)
         return dt.astimezone(timezone.utc)
     return None
@@ -94,7 +97,8 @@ def parse_utc_or_ist(local_str, utc_str):
         dt = datetime.fromisoformat(local_str)
         try:
             dt = IST.localize(dt)
-        except Exception:
+except Exception:
+    pass
             dt = dt.replace(tzinfo=IST)
         return dt.astimezone(timezone.utc)
     return None
@@ -132,7 +136,8 @@ def istfmt(value):
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
         return dt.astimezone(IST).strftime('%d %b %Y, %I:%M %p IST')
-    except Exception:
+except Exception:
+    pass
         return str(value)
 
 app.secret_key = os.environ.get("SECRET_KEY", "dev-key")
@@ -241,7 +246,8 @@ def parse_iso(s):
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
         return dt.astimezone(timezone.utc)
-    except Exception:
+except Exception:
+    pass
         return None
 
 
@@ -250,7 +256,8 @@ def to_ist(dt):
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
         return dt.astimezone(IST)
-    except Exception:
+except Exception:
+    pass
         return dt
 
 def now_utc():
@@ -385,7 +392,8 @@ def to_ist(dt):
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
         return dt.astimezone(IST)
-    except Exception:
+except Exception:
+    pass
         return dt
 
 
@@ -436,7 +444,8 @@ def export_excel():
         return redirect(url_for('login'))
     try:
         rows = exec_sql('SELECT * FROM elections ORDER BY start_time DESC', fetch=True)
-    except Exception:
+except Exception:
+    pass
         rows = query('SELECT * FROM elections ORDER BY start_time DESC')
     now = datetime.now(timezone.utc)
     ongoing, scheduled, ended = [], [], []
@@ -465,7 +474,8 @@ def admin_voters():
     try:
         voters = exec_sql("SELECT id, username FROM users WHERE role='voter' ORDER BY username", fetch=True)
         counts = exec_sql("SELECT e.title, COUNT(v.id) AS votes FROM votes v JOIN elections e ON e.id=v.election_id GROUP BY e.title ORDER BY e.title", fetch=True)
-    except Exception:
+except Exception:
+    pass
         voters = query("SELECT id, username FROM users WHERE role='voter' ORDER BY username")
         counts = query("SELECT e.title, COUNT(v.id) AS votes FROM votes v JOIN elections e ON e.id=v.election_id GROUP BY e.title ORDER BY e.title")
     return render_template('admin_voters.html', voters=voters, counts=counts)
@@ -479,7 +489,8 @@ def election_dashboard(election_id):
     try:
         e = exec_sql('SELECT * FROM elections WHERE id=%s', (election_id,), fetch=True, one=True)
         cand = exec_sql('SELECT name, votes FROM candidates WHERE election_id=%s ORDER BY votes DESC, name', (election_id,), fetch=True)
-    except Exception:
+except Exception:
+    pass
         e = query('SELECT * FROM elections WHERE id=%s', (election_id,))
         cand = query('SELECT name, votes FROM candidates WHERE election_id=%s ORDER BY votes DESC, name', (election_id,))
     total = sum([c.get('votes',0) for c in cand]) if cand else 0
@@ -515,7 +526,8 @@ def istfmt(value):
         dt = parse_iso(value)
         dt = to_ist(dt)
         return dt.strftime("%d %b %Y, %I:%M %p IST")
-    except Exception:
+except Exception:
+    pass
         return value
 
 
