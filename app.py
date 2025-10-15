@@ -18,6 +18,54 @@ def parse_utc_or_ist(local_str, utc_str):
         try:
             dt = datetime.fromisoformat(local_str)  # naive
         except Exception:
+
+# --- timezone & parsing helpers (added) ---
+import pytz
+IST = pytz.timezone("Asia/Kolkata")
+from datetime import datetime, timezone as _timezone
+
+def get_any(d, *keys):
+    for k in keys:
+        v = d.get(k)
+        if v:
+            return v
+    return None
+
+def parse_utc_or_local_as_ist(utc_str, local_str):
+    """Return timezone-aware UTC datetime parsed from utc_str (ISO Z) or local naive string as IST."""
+    if utc_str:
+        try:
+            return datetime.fromisoformat(utc_str.replace('Z','+00:00')).astimezone(_timezone.utc)
+        except Exception:
+            pass
+    if local_str:
+        try:
+            naive = datetime.fromisoformat(local_str)
+            try:
+                loc = IST.localize(naive)
+            except Exception:
+                loc = naive.replace(tzinfo=IST)
+            return loc.astimezone(_timezone.utc)
+        except Exception:
+            return None
+    return None
+
+def exec_sql(sql, args=(), fetch=False, one=False):
+    """Light wrapper to execute SQL and optionally fetch rows."""
+    db = get_db()
+    cur = db.execute(sql, args)
+    if fetch:
+        rows = cur.fetchall()
+        cur.close()
+        return rows[0] if one and rows else rows
+    else:
+        db.commit()
+        last = cur.lastrowid
+        cur.close()
+        return last
+# --- end helpers ---
+
+
             return None
         try:
             dt = IST.localize(dt)
@@ -292,12 +340,12 @@ def schedule_election():
     year = request.form.get("year","").strip()
     category = request.form.get("category","").strip()
     tz_offset = int(request.form.get("tz_offset","0"))  # minutes from UTC to local (JS getTimezoneOffset)
-    start_raw = (request.form.get('start_time_utc') or "").strip()
-    end_raw   = (request.form.get('end_time_utc') or "").strip()
+    start_raw = get_any(request.form, 'start_time_utc','start_utc','start_time') or ''
+    end_raw = get_any(request.form, 'end_time_utc','end_utc','end_time') or ''
     start_time_utc = (request.form.get('start_time_utc') or '').strip()
     end_time_utc   = (request.form.get('end_time_utc') or '').strip()
     if not title or not year or not category or not start_raw or not end_raw:
-        flash("Missing some fields for scheduling.", "error"); return redirect(url_for("admin"))
+        flash("Missing some fields for scheduling. (will list missing fields in logs)", "error"); return redirect(url_for("admin"))
     def to_utc_iso(local_str):
         if len(local_str)==16: local_str += ":00"
         dt = datetime.fromisoformat(local_str)  # naive local wall time
