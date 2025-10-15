@@ -18,6 +18,7 @@ def parse_utc_or_ist(local_str, utc_str):
         try:
             dt = datetime.fromisoformat(local_str)  # naive
         except Exception:
+    pass
 
 # --- timezone & parsing helpers (added) ---
 import pytz
