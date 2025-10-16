@@ -46,6 +46,9 @@ def send_notification(user_id, message):
 # timezone helpers
 IST = pytz.timezone("Asia/Kolkata")
 
+# Global variable to store last scheduled election debug data (admin-only, short-lived)
+LAST_SCHEDULE_DEBUG = {}
+
 # If running in an environment with DATABASE_URL (e.g. Render), prefer PostgreSQL helpers
 DB_ADAPTER = os.environ.get("DATABASE_URL")
 if DB_ADAPTER:
@@ -71,7 +74,7 @@ if DB_ADAPTER:
 
 
 def get_db():
-    conn = sqlite3.connect('voting.db')
+    conn = sqlite3.connect('voting.db', timeout=30)
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -374,7 +377,7 @@ def logout():
 def admin():
     rows = query("SELECT * FROM elections ORDER BY start_time DESC")
     ongoing, scheduled, ended = classify_elections(rows)
-    return render_template("admin.html", ongoing=ongoing, scheduled=scheduled, ended=ended, elections=rows)
+    return render_template("admin.html", ongoing=ongoing, scheduled=scheduled, ended=ended, elections=rows, last_schedule_debug=LAST_SCHEDULE_DEBUG)
 @app.route("/add_candidate", methods=["POST"])
 @login_required(role="admin")
 def add_candidate():
@@ -407,42 +410,100 @@ def add_candidate():
 @app.route("/schedule_election", methods=["POST"])
 @login_required(role="admin")
 def schedule_election():
+    global LAST_SCHEDULE_DEBUG
+    
     title = request.form.get("title","").strip()
     year = request.form.get("year","").strip()
     category = request.form.get("category","").strip()
-    # minutes from UTC to local (JS getTimezoneOffset). Accept empty or invalid input gracefully.
+    
+    # Get timezone offset for debugging/fallback
     tz_raw = (request.form.get("tz_offset") or "").strip()
     try:
         tz_offset = int(tz_raw) if tz_raw != "" else 0
     except ValueError:
         tz_offset = 0
-    start_raw = get_any(request.form, 'start_time_utc','start_utc','start_time') or ''
-    end_raw = get_any(request.form, 'end_time_utc','end_utc','end_time') or ''
+    
+    # Prefer UTC inputs if provided by the client JavaScript
     start_time_utc = (request.form.get('start_time_utc') or '').strip()
-    end_time_utc   = (request.form.get('end_time_utc') or '').strip()
-    if not title or not year or not category or not start_raw or not end_raw:
-        flash("Missing some fields for scheduling. (will list missing fields in logs)", "error"); return redirect(url_for("admin"))
-    def to_utc_iso(local_str):
-        if len(local_str)==16: local_str += ":00"
-        dt = datetime.fromisoformat(local_str)  # naive local wall time
-        # JS getTimezoneOffset() is minutes DIFFERENCE from UTC to local (UTC - local)
-        # Correct conversion: UTC = local + offset_minutes
-        utc_dt = dt - timedelta(minutes=tz_offset)
-        return utc_dt.replace(tzinfo=timezone.utc).isoformat()
-    start_time = to_utc_iso(start_raw); end_time = to_utc_iso(end_raw)
-    sdt = parse_iso(start_time); edt = parse_iso(end_time)
+    end_time_utc = (request.form.get('end_time_utc') or '').strip()
+    
+    # Fallback to local time inputs if UTC not provided
+    start_time_local = (request.form.get('start_time') or '').strip()
+    end_time_local = (request.form.get('end_time') or '').strip()
+    
+    if not title or not year or not category or (not start_time_utc and not start_time_local) or (not end_time_utc and not end_time_local):
+        flash("Missing some fields for scheduling.", "error")
+        return redirect(url_for("admin"))
+    
+    # Parse UTC times if provided, otherwise parse local times as IST
+    if start_time_utc and end_time_utc:
+        app.logger.info(f"[Schedule Election] Using UTC inputs: start={start_time_utc}, end={end_time_utc}")
+        sdt = parse_iso(start_time_utc)
+        edt = parse_iso(end_time_utc)
+        if not sdt or not edt:
+            flash("Invalid UTC time format received from client.", "error")
+            return redirect(url_for("admin"))
+    else:
+        # Fallback: parse as naive local datetime and assume IST
+        app.logger.info(f"[Schedule Election] Using local (IST) fallback: start={start_time_local}, end={end_time_local}")
+        try:
+            # Ensure we have seconds in the datetime string
+            start_str = start_time_local if len(start_time_local) > 16 else start_time_local + ":00"
+            end_str = end_time_local if len(end_time_local) > 16 else end_time_local + ":00"
+            
+            # Parse as naive datetime
+            start_naive = datetime.fromisoformat(start_str)
+            end_naive = datetime.fromisoformat(end_str)
+            
+            # Localize to IST and convert to UTC
+            start_ist = IST.localize(start_naive)
+            end_ist = IST.localize(end_naive)
+            sdt = start_ist.astimezone(timezone.utc)
+            edt = end_ist.astimezone(timezone.utc)
+        except Exception as e:
+            app.logger.error(f"[Schedule Election] Failed to parse local times: {e}")
+            flash("Invalid time format.", "error")
+            return redirect(url_for("admin"))
+    
+    # Validate time window
     if not sdt or not edt or edt <= sdt:
-        flash("Invalid time window. End must be after start.", "error"); return redirect(url_for("admin"))
+        flash("Invalid time window. End must be after start.", "error")
+        return redirect(url_for("admin"))
+    
+    # Convert to ISO format for storage
+    start_time = sdt.isoformat()
+    end_time = edt.isoformat()
+    
+    # Store debug data for admin panel
+    LAST_SCHEDULE_DEBUG = {
+        'raw_start': start_time_utc or start_time_local,
+        'raw_end': end_time_utc or end_time_local,
+        'utc_start': start_time,
+        'utc_end': end_time
+    }
+    
+    # Log the computed values
+    app.logger.info(f"[Schedule Election] Computed UTC times: start={start_time}, end={end_time}")
+    app.logger.info(f"[Schedule Election] IST display: start={to_ist(sdt)}, end={to_ist(edt)}")
+    
+    # Parse and validate candidate limit
     created_by = session.get("user_id")
     cand_limit = request.form.get("candidate_limit","").strip()
     try:
         cand_limit_val = int(cand_limit) if cand_limit else None
-        if cand_limit_val is not None and cand_limit_val < 1: raise ValueError
+        if cand_limit_val is not None and cand_limit_val < 1:
+            raise ValueError
     except ValueError:
-        flash("Candidate limit must be a positive number.", "error"); return redirect(url_for("admin"))
+        flash("Candidate limit must be a positive number.", "error")
+        return redirect(url_for("admin"))
+    
+    # Insert election into database
     execute("INSERT INTO elections (title,year,category,start_time,end_time,created_by,candidate_limit) VALUES (?,?,?,?,?,?,?)",
             (title, int(year), category, start_time, end_time, created_by, cand_limit_val))
-    flash("Election scheduled.", "ok"); return redirect(url_for("admin"))
+    
+    # Flash success message with computed times
+    flash(f"Election scheduled. UTC: {start_time} to {end_time} | IST: {to_ist(sdt).strftime('%Y-%m-%d %H:%M')} to {to_ist(edt).strftime('%Y-%m-%d %H:%M')}", "ok")
+    return redirect(url_for("admin"))
 
 # ----------- Voting & Results -----------
 def current_active_election():
