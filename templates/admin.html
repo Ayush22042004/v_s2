@@ -29,6 +29,19 @@
       <input name="candidate_limit" type="number" min="1">
       <button class="btn primary" type="submit">Schedule</button>
     </form>
+    {% if debug_info %}
+    <div style="margin-top: 16px; padding: 12px; background-color: #f0f0f0; border-radius: 4px; font-size: 0.9em;">
+      <strong>🔍 Last Scheduled Election Debug Info:</strong>
+      <div style="margin-top: 8px; font-family: monospace;">
+        <div><strong>Title:</strong> {{ debug_info.title }}</div>
+        <div><strong>Start (UTC stored):</strong> {{ debug_info.start_time_utc }}</div>
+        <div><strong>End (UTC stored):</strong> {{ debug_info.end_time_utc }}</div>
+        <div><strong>Start (local input):</strong> {{ debug_info.start_time_local }}</div>
+        <div><strong>End (local input):</strong> {{ debug_info.end_time_local }}</div>
+        <div><strong>TZ Offset:</strong> {{ debug_info.tz_offset }} minutes</div>
+      </div>
+    </div>
+    {% endif %}
   </div>
 
   <div class="card">
@@ -89,7 +102,7 @@
     setTz();
     // ensure hidden utc fields on submit
     document.querySelectorAll('form').forEach(function(form){
-      form.addEventListener('submit', function(){
+      form.addEventListener('submit', function(e){
         // update tz just before submit
         setTz();
         form.querySelectorAll('input[type="datetime-local"]').forEach(function(local){
@@ -103,10 +116,12 @@
           }
           const v = local.value;
           if(v){
+            // datetime-local value is in format "2025-01-15T10:00"
+            // This represents local wall-clock time.
+            // Convert to UTC by creating Date object and getting ISO string
             const d = new Date(v);
             if(!isNaN(d)){
-              const utc = new Date(d.getTime() - d.getTimezoneOffset()*60000);
-              hidden.value = utc.toISOString();
+              hidden.value = d.toISOString();
             }
           }
         });

@@ -374,7 +374,9 @@ def logout():
 def admin():
     rows = query("SELECT * FROM elections ORDER BY start_time DESC")
     ongoing, scheduled, ended = classify_elections(rows)
-    return render_template("admin.html", ongoing=ongoing, scheduled=scheduled, ended=ended, elections=rows)
+    debug_info = session.get('last_scheduled_election', None)
+    return render_template("admin.html", ongoing=ongoing, scheduled=scheduled, ended=ended, elections=rows, debug_info=debug_info)
+
 @app.route("/add_candidate", methods=["POST"])
 @login_required(role="admin")
 def add_candidate():
@@ -410,39 +412,130 @@ def schedule_election():
     title = request.form.get("title","").strip()
     year = request.form.get("year","").strip()
     category = request.form.get("category","").strip()
-    # minutes from UTC to local (JS getTimezoneOffset). Accept empty or invalid input gracefully.
-    tz_raw = (request.form.get("tz_offset") or "").strip()
+    
+    # Get UTC times from hidden fields (set by JavaScript)
+    start_time_utc = (request.form.get('start_time_utc') or '').strip()
+    end_time_utc = (request.form.get('end_time_utc') or '').strip()
+    
+    # Get local times as fallback (for backwards compatibility)
+    start_time_local = (request.form.get('start_time') or '').strip()
+    end_time_local = (request.form.get('end_time') or '').strip()
+    
+    # Get timezone offset for logging and fallback conversion
+    tz_offset_str = (request.form.get("tz_offset") or "").strip()
     try:
-        tz_offset = int(tz_raw) if tz_raw != "" else 0
+        tz_offset = int(tz_offset_str) if tz_offset_str else 0
     except ValueError:
         tz_offset = 0
-    start_raw = get_any(request.form, 'start_time_utc','start_utc','start_time') or ''
-    end_raw = get_any(request.form, 'end_time_utc','end_utc','end_time') or ''
-    start_time_utc = (request.form.get('start_time_utc') or '').strip()
-    end_time_utc   = (request.form.get('end_time_utc') or '').strip()
-    if not title or not year or not category or not start_raw or not end_raw:
-        flash("Missing some fields for scheduling. (will list missing fields in logs)", "error"); return redirect(url_for("admin"))
-    def to_utc_iso(local_str):
-        if len(local_str)==16: local_str += ":00"
-        dt = datetime.fromisoformat(local_str)  # naive local wall time
-        # JS getTimezoneOffset() is minutes DIFFERENCE from UTC to local (UTC - local)
-        # Correct conversion: UTC = local + offset_minutes
-        utc_dt = dt - timedelta(minutes=tz_offset)
-        return utc_dt.replace(tzinfo=timezone.utc).isoformat()
-    start_time = to_utc_iso(start_raw); end_time = to_utc_iso(end_raw)
-    sdt = parse_iso(start_time); edt = parse_iso(end_time)
-    if not sdt or not edt or edt <= sdt:
-        flash("Invalid time window. End must be after start.", "error"); return redirect(url_for("admin"))
-    created_by = session.get("user_id")
+    
+    # Log all received values for debugging
+    print(f"📅 schedule_election received:")
+    print(f"  title: {title}")
+    print(f"  year: {year}")
+    print(f"  category: {category}")
+    print(f"  start_time_utc: {start_time_utc}")
+    print(f"  end_time_utc: {end_time_utc}")
+    print(f"  start_time (local): {start_time_local}")
+    print(f"  end_time (local): {end_time_local}")
+    print(f"  tz_offset: {tz_offset} minutes")
+    
+    # Validation
+    if not title or not year or not category:
+        flash("Missing required fields: title, year, or category.", "error")
+        return redirect(url_for("admin"))
+    
+    # Parse UTC times (preferred)
+    start_dt = None
+    end_dt = None
+    
+    if start_time_utc and end_time_utc:
+        # Use UTC times from JavaScript (preferred path)
+        try:
+            start_dt = datetime.fromisoformat(start_time_utc.replace('Z', '+00:00'))
+            if start_dt.tzinfo is None:
+                start_dt = start_dt.replace(tzinfo=timezone.utc)
+            else:
+                start_dt = start_dt.astimezone(timezone.utc)
+            
+            end_dt = datetime.fromisoformat(end_time_utc.replace('Z', '+00:00'))
+            if end_dt.tzinfo is None:
+                end_dt = end_dt.replace(tzinfo=timezone.utc)
+            else:
+                end_dt = end_dt.astimezone(timezone.utc)
+            
+            print(f"✅ Using UTC times from JavaScript")
+            print(f"  start_dt (UTC): {start_dt.isoformat()}")
+            print(f"  end_dt (UTC): {end_dt.isoformat()}")
+        except Exception as e:
+            print(f"⚠️ Failed to parse UTC times: {e}")
+            start_dt = None
+            end_dt = None
+    
+    # Fallback to local times if UTC parsing failed
+    if not start_dt or not end_dt:
+        if not start_time_local or not end_time_local:
+            flash("Missing start or end time.", "error")
+            return redirect(url_for("admin"))
+        
+        print(f"⚠️ Falling back to local time conversion (not recommended)")
+        # This should rarely happen if JavaScript is working correctly
+        # For safety, we won't do any timezone conversion here
+        # Just treat the input as UTC
+        try:
+            start_dt = datetime.fromisoformat(start_time_local)
+            start_dt = start_dt.replace(tzinfo=timezone.utc)
+            
+            end_dt = datetime.fromisoformat(end_time_local)
+            end_dt = end_dt.replace(tzinfo=timezone.utc)
+            
+            print(f"  start_dt (assumed UTC): {start_dt.isoformat()}")
+            print(f"  end_dt (assumed UTC): {end_dt.isoformat()}")
+        except Exception as e:
+            flash(f"Invalid time format: {e}", "error")
+            return redirect(url_for("admin"))
+    
+    # Validate time window
+    if end_dt <= start_dt:
+        flash("End time must be after start time.", "error")
+        return redirect(url_for("admin"))
+    
+    # Parse candidate limit
     cand_limit = request.form.get("candidate_limit","").strip()
     try:
         cand_limit_val = int(cand_limit) if cand_limit else None
-        if cand_limit_val is not None and cand_limit_val < 1: raise ValueError
+        if cand_limit_val is not None and cand_limit_val < 1:
+            raise ValueError("Must be positive")
     except ValueError:
-        flash("Candidate limit must be a positive number.", "error"); return redirect(url_for("admin"))
+        flash("Candidate limit must be a positive number.", "error")
+        return redirect(url_for("admin"))
+    
+    # Store as UTC ISO strings
+    start_time_iso = start_dt.isoformat()
+    end_time_iso = end_dt.isoformat()
+    
+    print(f"💾 Storing in database:")
+    print(f"  start_time: {start_time_iso}")
+    print(f"  end_time: {end_time_iso}")
+    
+    created_by = session.get("user_id")
+    
+    # Insert into database
     execute("INSERT INTO elections (title,year,category,start_time,end_time,created_by,candidate_limit) VALUES (?,?,?,?,?,?,?)",
-            (title, int(year), category, start_time, end_time, created_by, cand_limit_val))
-    flash("Election scheduled.", "ok"); return redirect(url_for("admin"))
+            (title, int(year), category, start_time_iso, end_time_iso, created_by, cand_limit_val))
+    
+    # Store debug info in session for display in admin UI
+    session['last_scheduled_election'] = {
+        'title': title,
+        'start_time_utc': start_time_iso,
+        'end_time_utc': end_time_iso,
+        'start_time_local': start_time_local,
+        'end_time_local': end_time_local,
+        'tz_offset': tz_offset
+    }
+    
+    flash("Election scheduled.", "ok")
+    return redirect(url_for("admin"))
+
 
 # ----------- Voting & Results -----------
 def current_active_election():
@@ -570,13 +663,32 @@ def schedule():
         category = request.form.get('category','').strip()
         limit = request.form.get('candidate_limit') or None
         try:
-            st = datetime.fromisoformat(request.form.get('start_time_utc')).replace(tzinfo=IST).astimezone(timezone.utc)
-            en = datetime.fromisoformat(request.form.get('end_time_utc')).replace(tzinfo=IST).astimezone(timezone.utc)
-            exec_sql('INSERT INTO elections(title,category,start_time,end_time,candidate_limit) VALUES (?,?,?,?,?)', (title, category, st, en, limit))
+            # Parse UTC times from JavaScript (already in UTC)
+            st_str = request.form.get('start_time_utc')
+            en_str = request.form.get('end_time_utc')
+            
+            # Parse as UTC (remove 'Z' if present and add timezone)
+            st = datetime.fromisoformat(st_str.replace('Z', '+00:00'))
+            if st.tzinfo is None:
+                st = st.replace(tzinfo=timezone.utc)
+            else:
+                st = st.astimezone(timezone.utc)
+            
+            en = datetime.fromisoformat(en_str.replace('Z', '+00:00'))
+            if en.tzinfo is None:
+                en = en.replace(tzinfo=timezone.utc)
+            else:
+                en = en.astimezone(timezone.utc)
+            
+            print(f"📅 /schedule storing: start={st.isoformat()}, end={en.isoformat()}")
+            
+            exec_sql('INSERT INTO elections(title,category,start_time,end_time,candidate_limit) VALUES (?,?,?,?,?)', (title, category, st.isoformat(), en.isoformat(), limit))
             return redirect(url_for('schedule', ok='Election scheduled'))
         except Exception as e:
+            print(f"⚠️ /schedule error: {e}")
             return render_template('schedule.html', error=str(e))
     return render_template('schedule.html')
+
 
 # NOTE: the run block is placed at the end of the file (after all helper definitions)
 
