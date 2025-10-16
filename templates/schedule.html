@@ -5,10 +5,8 @@
   <div class="col-md-4"><label class="form-label">Title</label><input name="title" class="form-control" required></div>
   <div class="col-md-4"><label class="form-label">Category</label><input name="category" class="form-control" required></div>
   <div class="col-md-4"><label class="form-label">Candidate limit</label><input name="candidate_limit" type="number" class="form-control" min="1"></div>
-  <div class="col-md-6"><label class="form-label">Start (IST)</label><input name="start_time" type="datetime-local" class="form-control" required>
-<input type=\"hidden\" name=\"start_time_utc\"></div>
-  <div class="col-md-6"><label class="form-label">End (IST)</label><input name="end_time" type="datetime-local" class="form-control" required>
-<input type=\"hidden\" name=\"end_time_utc\"></div>
+  <div class="col-md-6"><label class="form-label">Start (IST)</label><input name="start_time" type="datetime-local" class="form-control" required></div>
+  <div class="col-md-6"><label class="form-label">End (IST)</label><input name="end_time" type="datetime-local" class="form-control" required></div>
   <div class="col-12"><button class="btn btn-primary">Create</button></div>
 </form>
 {% endblock %}
@@ -22,24 +20,30 @@
     setTz();
     // ensure hidden utc fields on submit
     document.querySelectorAll('form').forEach(function(form){
-      form.addEventListener('submit', function(){
+      form.addEventListener('submit', function(e){
         // update tz just before submit
         setTz();
+        console.log('[Schedule] Form submit - creating UTC hidden inputs');
         form.querySelectorAll('input[type="datetime-local"]').forEach(function(local){
           if(!local.name) return;
-          let hidden = form.querySelector('input[name="'+local.name+'_utc"]');
-          if(!hidden){
-            hidden = document.createElement('input');
-            hidden.type = 'hidden';
-            hidden.name = local.name + '_utc';
-            form.appendChild(hidden);
-          }
           const v = local.value;
           if(v){
+            // Create a Date object from the datetime-local value
             const d = new Date(v);
             if(!isNaN(d)){
-              const utc = new Date(d.getTime() - d.getTimezoneOffset()*60000);
-              hidden.value = utc.toISOString();
+              // Convert to UTC using toISOString() which gives proper UTC representation
+              const utcStr = d.toISOString();
+              console.log('[Schedule] ' + local.name + ' (local):', v, '-> UTC:', utcStr);
+              
+              // Always create/update the hidden UTC input
+              let hidden = form.querySelector('input[name="'+local.name+'_utc"]');
+              if(!hidden){
+                hidden = document.createElement('input');
+                hidden.type = 'hidden';
+                hidden.name = local.name + '_utc';
+                form.appendChild(hidden);
+              }
+              hidden.value = utcStr;
             }
           }
         });

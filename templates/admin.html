@@ -8,6 +8,17 @@
   </div>
   <div class="card">
     <h3>Schedule Election</h3>
+    {% if last_schedule_debug %}
+    <div style="background: #f0f0f0; padding: 8px; margin-bottom: 12px; font-size: 0.85em; border-left: 3px solid #007bff;">
+      <strong>🔍 Last Schedule Debug (Admin Only):</strong><br>
+      <small>
+        Raw Start: {{ last_schedule_debug.raw_start or 'N/A' }}<br>
+        Raw End: {{ last_schedule_debug.raw_end or 'N/A' }}<br>
+        UTC Start: {{ last_schedule_debug.utc_start or 'N/A' }}<br>
+        UTC End: {{ last_schedule_debug.utc_end or 'N/A' }}
+      </small>
+    </div>
+    {% endif %}
   <form method="POST" action="{{ url_for('schedule_election') }}">
 <input type='hidden' name='tz_offset' value='0' />
       <input name="title" placeholder="Election Title" required>
@@ -89,24 +100,30 @@
     setTz();
     // ensure hidden utc fields on submit
     document.querySelectorAll('form').forEach(function(form){
-      form.addEventListener('submit', function(){
+      form.addEventListener('submit', function(e){
         // update tz just before submit
         setTz();
+        console.log('[Admin] Form submit - creating UTC hidden inputs');
         form.querySelectorAll('input[type="datetime-local"]').forEach(function(local){
           if(!local.name) return;
-          let hidden = form.querySelector('input[name="'+local.name+'_utc"]');
-          if(!hidden){
-            hidden = document.createElement('input');
-            hidden.type = 'hidden';
-            hidden.name = local.name + '_utc';
-            form.appendChild(hidden);
-          }
           const v = local.value;
           if(v){
+            // Create a Date object from the datetime-local value
             const d = new Date(v);
             if(!isNaN(d)){
-              const utc = new Date(d.getTime() - d.getTimezoneOffset()*60000);
-              hidden.value = utc.toISOString();
+              // Convert to UTC using toISOString() which gives proper UTC representation
+              const utcStr = d.toISOString();
+              console.log('[Admin] ' + local.name + ' (local):', v, '-> UTC:', utcStr);
+              
+              // Always create/update the hidden UTC input
+              let hidden = form.querySelector('input[name="'+local.name+'_utc"]');
+              if(!hidden){
+                hidden = document.createElement('input');
+                hidden.type = 'hidden';
+                hidden.name = local.name + '_utc';
+                form.appendChild(hidden);
+              }
+              hidden.value = utcStr;
             }
           }
         });
