@@ -1,0 +1,175 @@
+:root{
+  --bg: #0f1724;
+  --card-bg: linear-gradient(180deg,#0b1220 0%, #0f1730 100%);
+  --accent: #ffd166;
+  --muted: #9aa6bf;
+  --glass: rgba(255,255,255,0.03);
+}
+
+*{box-sizing:border-box}
+html,body,#app{height:100%}
+body{
+  margin:0;
+  background: radial-gradient(1200px 600px at 10% 10%, rgba(255, 209, 102, 0.06), transparent),
+              radial-gradient(900px 400px at 90% 90%, rgba(99,102,241,0.04), transparent),
+              var(--bg);
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+  color: #E6EEF8;
+  -webkit-font-smoothing:antialiased;
+  -moz-osx-font-smoothing:grayscale;
+  min-height:100vh;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:28px;
+}
+
+/* Page wrapper */
+.page{
+  width:100%;
+  max-width:900px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  position:relative;
+}
+
+/* result card */
+.result-card{
+  width:360px;
+  background: var(--card-bg);
+  border-radius:16px;
+  padding:20px;
+  box-shadow: 0 10px 30px rgba(2,6,23,0.6), inset 0 1px 0 rgba(255,255,255,0.02);
+  backdrop-filter: blur(6px);
+  transform-origin:center;
+  opacity:0;
+  transform: scale(0.88);
+  transition: transform 360ms cubic-bezier(.175,.885,.32,1.275), opacity 180ms ease;
+  text-align:center;
+  position:relative;
+}
+
+/* when the 'popped' class is applied, it grows and becomes visible */
+.result-card.popped{
+  opacity:1;
+  transform: scale(1);
+}
+
+/* Header */
+.result-header{ margin-bottom:8px; }
+.result-title{
+  margin:0;
+  font-size:20px;
+  color:var(--accent);
+  letter-spacing:0.02em;
+}
+
+/* Body */
+.result-body{ padding:14px 10px; }
+.candidate{
+  margin:0;
+  font-size:24px;
+  font-weight:700;
+  color:#fff;
+}
+.votes{
+  margin:6px 0 0 0;
+  font-size:14px;
+  color:var(--muted);
+}
+
+/* Footer / buttons */
+.result-footer{
+  margin-top:16px;
+  display:flex;
+  gap:10px;
+  justify-content:center;
+}
+.btn{
+  background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.02));
+  color:#fff;
+  padding:8px 12px;
+  border-radius:10px;
+  border: none;
+  cursor:pointer;
+  font-weight:600;
+}
+.btn.alt{
+  background:transparent;
+  color:var(--muted);
+  text-decoration:none;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+}
+
+/* Sparkle root sits behind the card and contains particles */
+.sparkle-root{
+  position:absolute;
+  inset:0;
+  pointer-events:none;
+  overflow:visible;
+  display:block;
+}
+
+/* single sparkle element */
+.sparkle{
+  position:absolute;
+  width:10px;
+  height:10px;
+  border-radius:50%;
+  background: radial-gradient(circle at 30% 30%, #fff 10%, rgba(255,255,255,0.8) 20%, rgba(255, 209, 102, 0.8) 40%, rgba(255, 209, 102, 0.2) 60%, transparent 70%);
+  transform: translate(-50%,-50%) scale(0.5);
+  opacity:0;
+  will-change: transform, opacity, filter;
+  filter: drop-shadow(0 4px 8px rgba(255, 200, 50, 0.12));
+  animation: sparkle-move var(--dur, 900ms) cubic-bezier(.2,.8,.2,1) forwards;
+}
+
+/* small star shape variant */
+.sparkle.star{
+  width:12px;height:12px;
+  background: linear-gradient(135deg,#fff 0%, #ffd166 60%);
+  clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 67% 57%, 79% 91%, 50% 70%, 21% 91%, 33% 57%, 2% 35%, 39% 35%);
+  transform-origin:center;
+}
+
+/* keyframes for particle flight + fade out */
+@keyframes sparkle-move {
+  0% {
+    opacity:1;
+    transform: translate(-50%,-50%) scale(0.8) translateY(0) rotate(0deg);
+    filter: blur(0px);
+  }
+  60% {
+    transform: translate(var(--dx,0px), var(--dy,0px)) scale(var(--scale,1)) rotate(var(--rot,0deg));
+    opacity:0.95;
+  }
+  100%{
+    transform: translate(calc(var(--dx,0px) * 1.05), calc(var(--dy,0px) * 1.05)) scale(0.2) rotate(calc(var(--rot,0deg) * 1.1));
+    opacity:0;
+    filter: blur(1.6px);
+  }
+}
+
+/* subtle entrance glow behind card */
+.result-card::before{
+  content:'';
+  position:absolute;
+  left:50%;
+  top:50%;
+  width:420px;
+  height:420px;
+  transform:translate(-50%,-50%);
+  background: radial-gradient(circle at 50% 40%, rgba(255,209,102,0.06), transparent 30%);
+  pointer-events:none;
+  opacity:0;
+  transition: opacity 300ms ease;
+}
+.result-card.popped::before{ opacity:1; }
+
+/* small responsive tweak */
+@media (max-width:420px){
+  .result-card{ width:92%; }
+}
