@@ -46,6 +46,16 @@ def send_notification(user_id, message):
 # timezone helpers
 IST = pytz.timezone("Asia/Kolkata")
 
+def safe_localize(naive_dt, tz):
+    """Attach tz info to a naive datetime supporting both pytz and zoneinfo.
+    If tz exposes localize, use tz.localize(naive_dt) (pytz). Otherwise use naive_dt.replace(tzinfo=tz) (zoneinfo).
+    """
+    if naive_dt is None:
+        return None
+    if hasattr(tz, 'localize'):
+        return tz.localize(naive_dt)
+    return naive_dt.replace(tzinfo=tz)
+
 # Global variable to store last scheduled election debug data (admin-only, short-lived)
 LAST_SCHEDULE_DEBUG = {}
 
@@ -98,10 +108,7 @@ def parse_utc_or_local_as_ist(utc_str, local_str):
     if local_str:
         try:
             naive = datetime.fromisoformat(local_str)
-            try:
-                loc = IST.localize(naive)
-            except Exception:
-                loc = naive.replace(tzinfo=IST)
+            loc = safe_localize(naive, IST)
             return loc.astimezone(timezone.utc)
         except Exception:
             return None
@@ -456,8 +463,13 @@ def schedule_election():
             end_naive = datetime.fromisoformat(end_str)
             
             # Localize to IST and convert to UTC
-            start_ist = IST.localize(start_naive)
-            end_ist = IST.localize(end_naive)
+            try:
+                start_ist = safe_localize(start_naive, IST)
+                end_ist = safe_localize(end_naive, IST)
+            except Exception as loc_err:
+                app.logger.error(f"[Schedule Election] safe_localize failed: {loc_err}")
+                flash("Invalid or ambiguous local time.", "error")
+                return redirect(url_for("admin"))
             sdt = start_ist.astimezone(timezone.utc)
             edt = end_ist.astimezone(timezone.utc)
         except Exception as e:
