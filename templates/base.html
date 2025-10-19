@@ -13,6 +13,7 @@
   <nav class="topbar">
     <div class="brand">🗳️ VOTE</div>
     <div class="nav-right">
+      <a class="btn small" href="/public/result.html" title="View results">Results</a>
       {% if session.get('user_id') %}
         {% if unread_notifications and unread_notifications > 0 %}
           <a class="btn small" href="{{ url_for('candidate_profile') }}">🔔 <span class="badge">{{ unread_notifications }}</span></a>
@@ -87,8 +88,9 @@ document.addEventListener('DOMContentLoaded', () => {
   </div>
 </div>
 <script>
-function showToast(msg){try{const el=document.getElementById('appToast');document.getElementById('appToastBody').innerText=msg||'Saved';const t=new bootstrap.Toast(el,{delay:2000});t.show();}catch(e){console.log(e);}}
-function togglePassword(inputId, btn){const i=document.getElementById(inputId); if(!i) return; i.type = (i.type==='password') ? 'text' : 'password'; if(btn) btn.innerText = (i.type==='password') ? 'Show' : 'Hide';}
+function showToast(msg){try{const el=document.getElementById('appToast');document.getElementById('appToastBody').innerText=msg||'Saved';const t=new bootstrap.Toast(el,{delay:2000});t.show();}catch(e){}
+}
+function togglePassword(inputId, btn){const i=document.getElementById(inputId); if(!i) return; i.type = (i.type==='password') ? 'text' : 'password'; if(btn) btn.innerText = (i.type==='password') ? 'Show' : 'Hide'; }
 (function(){ try{ const sp=new URLSearchParams(location.search); const msg = sp.get('ok') || sp.get('msg'); if(msg) showToast(decodeURIComponent(msg)); }catch(e){} })();
 </script>
 
