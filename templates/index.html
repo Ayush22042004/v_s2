@@ -1,29 +1,37 @@
 {% extends "base.html" %}
+
+{% block title %}Home - VoteEasy{% endblock %}
+
 {% block content %}
-<h2>Dashboard</h2>
-<div class="grid">
-  <div class="card">
-    {% if user %}
-      <p class="muted">Logged in as {{ user.username }} ({{ user.role }})</p>
-      {% if user.role == 'admin' %}
-        <a class="btn primary" href="{{ url_for('admin') }}">Open Admin</a>
-      {% else %}
-        <a class="btn primary" href="{{ url_for('voter_panel') }}">Open Voter Panel</a>
-      {% endif %}
-    {% else %}
-      <p>Welcome! Please login or sign up to continue.</p>
-    {% endif %}
-  </div>
-  <div class="card">
-    <h3>Recent Elections</h3>
-    <ul>
-      {% for e in elections %}
-        <li><strong>{{ e.title or e.category }}</strong> • {{ e.category }} • {{ e.year or "YYYY" }}<br>
-            <span class="muted"><span class="utc-time">{{ e.start_time }}</span> → <span class="utc-time">{{ e.end_time }}</span></span></li>
-      {% else %}
-        <li class="muted">No elections scheduled yet.</li>
-      {% endfor %}
-    </ul>
-  </div>
-</div>
+  <section id="how" class="how container">
+    <h2 class="section-title">How It Works</h2>
+    <p class="section-sub">Get started in three simple steps</p>
+
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <h3>Create Your Poll</h3>
+        <p>Set up your election in minutes. Add candidates, set voting period, and customize.</p>
+      </div>
+
+      <div class="step">
+        <div class="step-num">2</div>
+        <h3>Share & Vote</h3>
+        <p>Share a unique link with your group. Members can vote securely from any device.</p>
+      </div>
+
+      <div class="step">
+        <div class="step-num">3</div>
+        <h3>View Results</h3>
+        <p>Results are calculated automatically. Export reports and announce winners instantly.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="stats container">
+    {# Include the language usage widget partial. If you want dynamic values, provide 'lang_data' from app.py #}
+    {% include "_language_stats.html" %}
+  </section>
+
+  {# Keep existing parts of your home page below if needed #}
 {% endblock %}

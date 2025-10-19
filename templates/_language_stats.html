@@ -1,0 +1,41 @@
+{# Language stats widget — if you want dynamic data, pass lang_data as a list of dicts:
+   lang_data = [
+     {"name":"Python","value":68.4,"color":["#3b82f6","#60a5fa"]},
+     {"name":"HTML","value":28.6,"color":["#fb923c","#f97316"]},
+     {"name":"CSS","value":2.9,"color":["#8b5cf6","#7c3aed"]},
+     {"name":"Other","value":0.1,"color":["#a78bfa","#7c3aed"]}
+   ]
+#}
+
+<section class="lang-stats" aria-labelledby="lang-stats-title">
+  <h3 id="lang-stats-title" class="ls-title">Languages</h3>
+
+  {# Render a stacked bar; compute percentages server side or here using Jinja #}
+  {% set total = lang_data | sum(attribute='value') if lang_data is defined else 100 %}
+  <div class="ls-bar" role="img" aria-label="Language usage chart">
+    {% for item in (lang_data or [
+        {"name":"Python","value":68.4,"color":["#3b82f6","#60a5fa"]},
+        {"name":"HTML","value":28.6,"color":["#fb923c","#f97316"]},
+        {"name":"CSS","value":2.9,"color":["#8b5cf6","#7c3aed"]},
+        {"name":"Other","value":0.1,"color":["#a78bfa","#7c3aed"]}
+      ]) %}
+      {% set pct = (item.value / total * 100) if total > 0 else 0 %}
+      <div class="ls-segment" title="{{ item.name }}: {{ item.value }}%" style="width:{{ '%.3f' % pct }}%; background: linear-gradient(90deg, {{ item.color[0] }}, {{ item.color[1] }});"></div>
+    {% endfor %}
+  </div>
+
+  <ul class="ls-legend" role="list">
+    {% for item in (lang_data or [
+        {"name":"Python","value":68.4,"color":["#3b82f6","#60a5fa"]},
+        {"name":"HTML","value":28.6,"color":["#fb923c","#f97316"]},
+        {"name":"CSS","value":2.9,"color":["#8b5cf6","#7c3aed"]},
+        {"name":"Other","value":0.1,"color":["#a78bfa","#7c3aed"]}
+      ]) %}
+      <li class="ls-legend-item">
+        <span class="ls-dot" style="background: linear-gradient(180deg, {{ item.color[0] }}, {{ item.color[1] }});" aria-hidden="true"></span>
+        <span class="ls-name">{{ item.name }}</span>
+        <span class="ls-value">{{ item.value }}%</span>
+      </li>
+    {% endfor %}
+  </ul>
+</section>

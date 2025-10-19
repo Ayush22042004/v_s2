@@ -1,96 +1,91 @@
 <!doctype html>
 <html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{ title or "Voting System" }}</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/mobile_patch.css') }}">
-</head>
-{% set _flashes = get_flashed_messages(with_categories=true) %}
-<body data-theme="dark" data-flashes='{{ _flashes|tojson|e }}'>
-  <nav class="topbar">
-    <div class="brand">🗳️ VOTE</div>
-    <div class="nav-right">
-      {% if session.get('user_id') %}
-        {% if unread_notifications and unread_notifications > 0 %}
-          <a class="btn small" href="{{ url_for('candidate_profile') }}">🔔 <span class="badge">{{ unread_notifications }}</span></a>
-        {% else %}
-          <a class="btn small" href="{{ url_for('candidate_profile') }}">🔔</a>
-        {% endif %}
-        <span class="muted">Hi, <span class="muted">
-  {% if session.get('user') and session['user'].get('role') == 'admin' %}
-    Admin
-  {% elif session.get('user') and session['user'].get('username') %}
-    {{ session['user'].get('username') }}
-  {% elif session.get('username') %}
-    {{ session['username'] }}
-  {% else %}
-    Guest
-  {% endif %}
-</span></span>
-        <a class="btn small" href="{{ url_for('logout') }}">Logout</a>
-  {% if session.get('user') and session['user'].get('role')=='admin' %}
-    <a class="nav-link" href="{{ url_for('schedule') }}">Schedule</a>
-  {% endif %}
-      {% else %}
-        <a class="btn small" href="{{ url_for('login') }}">Login</a>
-        <a class="btn small" href="{{ url_for('signup') }}">Sign up</a>
-      {% endif %}
-    </div>
-  </nav>
-  <main class="container">
-    {% with msgs = get_flashed_messages(with_categories=true) %}
-      {% if msgs %}
-        <div class="flash-wrap">
-          {% for cat, msg in msgs %}<div class="flash {{cat}}">{{ msg }}</div>{% endfor %}
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>{% block title %}VoteEasy{% endblock %}</title>
+
+    {# Theme and main styles #}
+    <link rel="stylesheet" href="{{ url_for('static', filename='theme.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+
+    {% block head %}{% endblock %}
+  </head>
+
+  <body>
+    <header class="nav-wrap">
+      <div class="nav container">
+        <a class="brand" href="{{ url_for('index') }}">
+          <svg width="28" height="28" viewBox="0 0 24 24" aria-hidden="true"><rect x="1" y="4" rx="2" ry="2" width="18" height="14" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M6 12l3 3 6-6" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span>VoteEasy</span>
+        </a>
+
+        <nav class="nav-links" aria-label="Main">
+          <a href="#features">Features</a>
+          <a href="#how">How It Works</a>
+          <a href="#about">About</a>
+          <a class="cta" href="{{ url_for('signup') }}">Get Started</a>
+        </nav>
+      </div>
+    </header>
+
+    {# Hero area can be overridden in child templates but provide a default hero #}
+    {% block hero %}
+    <section class="hero">
+      <div class="container hero-inner">
+        <div class="hero-copy">
+          <div class="badge">Simple • Secure • Transparent</div>
+          <h1 class="hero-title">Online Voting Made Simple</h1>
+          <p class="hero-sub">The easiest way for clubs and class representatives to conduct fair, transparent elections. Create polls, cast votes, and view results in real-time.</p>
+          <div class="hero-actions">
+            <a class="btn primary" href="{{ url_for('signup') }}">Create Your First Poll</a>
+            <a class="btn ghost" href="#how">How it works</a>
+          </div>
         </div>
-      {% endif %}
-    {% endwith %}
-    {% block content %}{% endblock %}
-  </main>
-  <script>
-    (function(){
-      function asLocal(s){
-        var d = new Date(s);
-        if (isNaN(d)) return s;
-        return d.toLocaleString();
-      }
-      document.querySelectorAll('.utc-time').forEach(function(el){
-        var text = el.textContent.trim();
-        if (text) { el.textContent = asLocal(text); }
-      });
-    })();
-  </script>
 
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-<script>
-document.addEventListener('DOMContentLoaded', () => {
-  try{
-    const raw = document.body.getAttribute('data-flashes') || '[]';
-    const flashes = JSON.parse(raw);
-    (flashes || []).forEach(([cat,msg]) => {
-      Swal.fire({icon: (cat==='ok')?'success': (cat==='error'?'error':'info'), title: msg, timer: 1800, showConfirmButton:false});
-    });
-  }catch(e){ console.warn('flash parse failed', e); }
-});
-</script>
+        <aside class="hero-preview" aria-hidden="true">
+          <div class="preview-card">
+            <div class="preview-icon">☑️</div>
+            <h3>Who should be Class President?</h3>
+            <div class="bar" role="progressbar" aria-valuenow="45" aria-valuemin="0" aria-valuemax="100">
+              <div class="bar-fill" style="width:45%"></div>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </section>
+    {% endblock %}
 
-<!-- Toast container -->
-<div class="position-fixed bottom-0 end-0 p-3" style="z-index:1080">
-  <div id="appToast" class="toast align-items-center text-bg-success border-0" role="alert" aria-live="assertive" aria-atomic="true">
-    <div class="d-flex">
-      <div class="toast-body" id="appToastBody"></div>
-      <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
-    </div>
-  </div>
-</div>
-<script>
-function showToast(msg){try{const el=document.getElementById('appToast');document.getElementById('appToastBody').innerText=msg||'Saved';const t=new bootstrap.Toast(el,{delay:2000});t.show();}catch(e){console.log(e);}}
-function togglePassword(inputId, btn){const i=document.getElementById(inputId); if(!i) return; i.type = (i.type==='password') ? 'text' : 'password'; if(btn) btn.innerText = (i.type==='password') ? 'Show' : 'Hide';}
-(function(){ try{ const sp=new URLSearchParams(location.search); const msg = sp.get('ok') || sp.get('msg'); if(msg) showToast(decodeURIComponent(msg)); }catch(e){} })();
-</script>
+    <main>
+      {% block content %}{% endblock %}
+    </main>
 
-</body>
+    <footer class="site-footer">
+      <div class="container footer-inner">
+        <div>
+          <strong>VoteEasy</strong>
+          <p class="muted">Making online voting simple, secure, and accessible for everyone.</p>
+        </div>
+
+        <div class="footer-links">
+          <div>
+            <h4>Product</h4>
+            <a href="#features">Features</a>
+            <a href="#security">Security</a>
+          </div>
+          <div>
+            <h4>Support</h4>
+            <a href="#help">Help Center</a>
+            <a href="#contact">Contact</a>
+          </div>
+        </div>
+      </div>
+
+      <div class="footer-bottom container">
+        <small>© {{ current_year if current_year is defined else "2025" }} VoteEasy. All rights reserved.</small>
+      </div>
+    </footer>
+
+    {% block scripts %}{% endblock %}
+  </body>
 </html>
