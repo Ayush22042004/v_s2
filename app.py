@@ -153,6 +153,125 @@ except:
     csrf = None
     print("⚠️ Flask-WTF not installed - CSRF protection disabled")
 
+# Database initialization function
+def init_database():
+    """Initialize database tables if they don't exist"""
+    try:
+        db = get_db()
+        
+        # Create users table
+        db.execute('''
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                email TEXT UNIQUE,
+                username TEXT UNIQUE NOT NULL,
+                password TEXT NOT NULL,
+                role TEXT NOT NULL DEFAULT 'voter',
+                id_number TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        ''')
+        
+        # Create elections table
+        db.execute('''
+            CREATE TABLE IF NOT EXISTS elections (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT,
+                category TEXT,
+                start_time TEXT NOT NULL,
+                end_time TEXT NOT NULL,
+                created_by INTEGER,
+                candidate_limit INTEGER DEFAULT 10,
+                status TEXT DEFAULT 'active',
+                cancelled_at TEXT,
+                cancelled_by INTEGER,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (created_by) REFERENCES users (id)
+            )
+        ''')
+        
+        # Create candidates table
+        db.execute('''
+            CREATE TABLE IF NOT EXISTS candidates (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                election_id INTEGER NOT NULL,
+                category TEXT DEFAULT 'General',
+                photo TEXT,
+                user_id INTEGER,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (election_id) REFERENCES elections (id),
+                FOREIGN KEY (user_id) REFERENCES users (id)
+            )
+        ''')
+        
+        # Create votes table
+        db.execute('''
+            CREATE TABLE IF NOT EXISTS votes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                candidate_id INTEGER NOT NULL,
+                election_id INTEGER NOT NULL,
+                voted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users (id),
+                FOREIGN KEY (candidate_id) REFERENCES candidates (id),
+                FOREIGN KEY (election_id) REFERENCES elections (id),
+                UNIQUE(user_id, election_id)
+            )
+        ''')
+        
+        # Create candidate_applications table
+        db.execute('''
+            CREATE TABLE IF NOT EXISTS candidate_applications (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                election_id INTEGER NOT NULL,
+                name TEXT NOT NULL,
+                category TEXT DEFAULT 'General',
+                photo TEXT,
+                status TEXT DEFAULT 'pending',
+                applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                reviewed_at TIMESTAMP,
+                reviewed_by INTEGER,
+                FOREIGN KEY (user_id) REFERENCES users (id),
+                FOREIGN KEY (election_id) REFERENCES elections (id),
+                FOREIGN KEY (reviewed_by) REFERENCES users (id)
+            )
+        ''')
+        
+        # Create notifications table (if needed)
+        db.execute('''
+            CREATE TABLE IF NOT EXISTS notifications (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                message TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                read INTEGER DEFAULT 0,
+                FOREIGN KEY (user_id) REFERENCES users (id)
+            )
+        ''')
+        
+        # Create default admin user if it doesn't exist
+        admin_exists = db.execute('SELECT COUNT(*) FROM users WHERE username = ?', ('admin',)).fetchone()[0]
+        if not admin_exists:
+            admin_password = generate_password_hash('admin123')
+            db.execute('''
+                INSERT INTO users (name, username, password, role)
+                VALUES (?, ?, ?, ?)
+            ''', ('Administrator', 'admin', admin_password, 'admin'))
+            print("✅ Default admin user created (username: admin, password: admin123)")
+        
+        db.commit()
+        db.close()
+        print("✅ Database initialized successfully")
+        
+    except Exception as e:
+        print(f"❌ Database initialization error: {e}")
+
+# Initialize database on startup
+init_database()
+
 # Simple rate limiting storage (in-memory for demo)
 from collections import defaultdict, deque
 import time
