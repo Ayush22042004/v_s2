@@ -977,19 +977,22 @@ def schedule():
                     flash("Candidate limit must be at least 2.", "error")
                     return render_template('schedule.html', error="Invalid candidate limit")
             
-            # Get current year if not provided
-            year = st.year
-            
-            execute('INSERT INTO elections(title,year,category,start_time,end_time,candidate_limit,created_by) VALUES (?,?,?,?,?,?,?)', 
-                   (title, year, category, st.isoformat(), en.isoformat(), limit, session.get('user_id')))
+            # Insert election without year column (not in schema)
+            execute('INSERT INTO elections(title,category,start_time,end_time,candidate_limit,created_by) VALUES (?,?,?,?,?,?)', 
+                   (title, category, st.isoformat(), en.isoformat(), limit, session.get('user_id')))
             
             flash(f"Election '{title}' scheduled successfully from {st.strftime('%Y-%m-%d %H:%M')} to {en.strftime('%Y-%m-%d %H:%M')} IST", "success")
             return redirect(url_for('admin'))
             
         except ValueError as e:
+            print(f"❌ Schedule Election - Date parsing error: {str(e)}")
             flash("Invalid date/time format. Please check your input.", "error")
             return render_template('schedule.html', error=f"Date parsing error: {str(e)}")
         except Exception as e:
+            print(f"❌ Schedule Election - Unexpected error: {str(e)}")
+            print(f"❌ Error type: {type(e).__name__}")
+            import traceback
+            print(f"❌ Full traceback: {traceback.format_exc()}")
             flash("An error occurred while scheduling the election.", "error")
             return render_template('schedule.html', error=str(e))
     
