@@ -523,8 +523,8 @@ def admin_approve_candidate():
     execute('INSERT INTO candidates (name,category,photo,election_id,user_id) VALUES (?,?,?,?,?)', (name, category, photo, election_id, user_id))
     candidate_id = query('SELECT id FROM candidates WHERE user_id=? ORDER BY id DESC', (user_id,), one=True)['id']
     # update application
-    approved_at = datetime.now(timezone.utc).isoformat()
-    execute('UPDATE candidate_applications SET status=?, approved_by=?, approved_at=?, candidate_id=? WHERE id=?', ('approved', session.get('user_id'), approved_at, candidate_id, app_id))
+    reviewed_at = datetime.now(timezone.utc).isoformat()
+    execute('UPDATE candidate_applications SET status=?, reviewed_by=?, reviewed_at=? WHERE id=?', ('approved', session.get('user_id'), reviewed_at, app_id))
     # notify candidate if email available
     try:
         user = query('SELECT * FROM users WHERE id=?', (user_id,), one=True)
