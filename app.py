@@ -370,6 +370,18 @@ def inject_unread_notifications():
 def health():
     return {'status': 'ok'}, 200
 
+@app.route('/debug_role')
+def debug_role():
+    if "user_id" not in session:
+        return {'error': 'Not logged in'}, 401
+    user = query("SELECT * FROM users WHERE id=?", (session["user_id"],), one=True)
+    return {
+        'session_role': session.get('role'),
+        'db_role': user['role'] if user else 'User not found',
+        'username': session.get('username'),
+        'user_id': session.get('user_id')
+    }
+
 # -------------- Routes --------------
 @app.route("/")
 def index():

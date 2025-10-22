@@ -254,11 +254,12 @@
           <select 
             name="election_id" 
             required
-            class="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg focus:border-purple-500/50 focus:outline-none transition-all duration-300 text-white text-sm"
+            class="w-full px-3 py-2 bg-gray-800 border border-white/10 rounded-lg focus:border-purple-500/50 focus:outline-none transition-all duration-300 text-white text-sm"
+            style="background-color: #1f2937 !important;"
           >
-            <option value="">Select Election</option>
+            <option value="" style="background-color: #1f2937; color: #9ca3af;">Select Election</option>
             {% for e in elections %}
-            <option value="{{ e.id }}">{{ e.title or e.category }}</option>
+            <option value="{{ e.id }}" style="background-color: #1f2937; color: white;">{{ e.title or e.category }}</option>
             {% endfor %}
           </select>
         </div>
