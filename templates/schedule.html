@@ -1,54 +1,310 @@
-{% extends "base.html" %}{% block content %}
-<h4>Schedule Election</h4>
-<form method="post" class="row g-3">
-<input type='hidden' name='tz_offset' value='0' />
-  <div class="col-md-4"><label class="form-label">Title</label><input name="title" class="form-control" required></div>
-  <div class="col-md-4"><label class="form-label">Category</label><input name="category" class="form-control" required></div>
-  <div class="col-md-4"><label class="form-label">Candidate limit</label><input name="candidate_limit" type="number" class="form-control" min="1"></div>
-  <div class="col-md-6"><label class="form-label">Start (IST)</label><input name="start_time" type="datetime-local" class="form-control" required></div>
-  <div class="col-md-6"><label class="form-label">End (IST)</label><input name="end_time" type="datetime-local" class="form-control" required></div>
-  <div class="col-12"><button class="btn btn-primary">Create</button></div>
-</form>
-{% endblock %}
+{% extends "base.html" %}
+{% block content %}
+
+<div class="max-w-4xl mx-auto">
+  
+  <!-- Schedule Header -->
+  <div class="mb-8">
+    <div class="glass-effect rounded-2xl p-6 border border-blue-500/20">
+      <div class="flex items-center justify-between">
+        <div>
+          <h1 class="text-3xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent mb-2">
+            Schedule New Election
+          </h1>
+          <p class="text-gray-400">Create and configure a new voting election</p>
+        </div>
+        <div class="w-16 h-16 bg-gradient-to-r from-blue-600 to-purple-600 rounded-2xl flex items-center justify-center animate-float">
+          <i class="fas fa-calendar-plus text-white text-2xl"></i>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Election Form -->
+  <div class="glass-effect rounded-2xl p-8 border border-white/10">
+    <form method="POST" class="space-y-8">
+      
+      <!-- Basic Information -->
+      <div class="space-y-6">
+        <div class="flex items-center space-x-3 pb-4 border-b border-white/10">
+          <div class="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-500 rounded-lg flex items-center justify-center">
+            <i class="fas fa-info-circle text-white text-sm"></i>
+          </div>
+          <h3 class="text-xl font-bold text-white">Basic Information</h3>
+        </div>
+        
+        <div class="grid md:grid-cols-2 gap-6">
+          <!-- Election Title -->
+          <div class="space-y-2">
+            <label class="block text-sm font-medium text-gray-300">
+              Election Title <span class="text-red-400">*</span>
+            </label>
+            <div class="relative">
+              <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <i class="fas fa-heading text-gray-400"></i>
+              </div>
+              <input 
+                name="title" 
+                required 
+                placeholder="e.g., Student Council Election 2024"
+                class="w-full pl-10 pr-4 py-3 bg-white/5 border border-white/10 rounded-lg focus:border-blue-500/50 focus:ring-2 focus:ring-blue-500/20 focus:outline-none transition-all duration-300 text-white placeholder-gray-400"
+              >
+            </div>
+          </div>
+
+          <!-- Year -->
+          <div class="space-y-2">
+            <label class="block text-sm font-medium text-gray-300">
+              Year <span class="text-red-400">*</span>
+            </label>
+            <div class="relative">
+              <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <i class="fas fa-calendar text-gray-400"></i>
+              </div>
+              <input 
+                name="year" 
+                type="number" 
+                required 
+                value="2024"
+                min="2020"
+                max="2030"
+                class="w-full pl-10 pr-4 py-3 bg-white/5 border border-white/10 rounded-lg focus:border-blue-500/50 focus:ring-2 focus:ring-blue-500/20 focus:outline-none transition-all duration-300 text-white"
+              >
+            </div>
+          </div>
+
+          <!-- Category -->
+          <div class="space-y-2">
+            <label class="block text-sm font-medium text-gray-300">
+              Category <span class="text-red-400">*</span>
+            </label>
+            <div class="relative">
+              <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <i class="fas fa-tags text-gray-400"></i>
+              </div>
+              <select 
+                name="category" 
+                required
+                class="w-full pl-10 pr-8 py-3 bg-white/5 border border-white/10 rounded-lg focus:border-blue-500/50 focus:ring-2 focus:ring-blue-500/20 focus:outline-none transition-all duration-300 text-white appearance-none cursor-pointer"
+              >
+                <option value="" class="bg-gray-800">Select Category</option>
+                <option value="Technical" class="bg-gray-800">Technical Department</option>
+                <option value="Publicity" class="bg-gray-800">Publicity Department</option>
+                <option value="Creatives" class="bg-gray-800">Creatives Department</option>
+                <option value="Coverage" class="bg-gray-800">Coverage (Media) Department</option>
+                <option value="General" class="bg-gray-800">General Department</option>
+                <option value="Executive" class="bg-gray-800">Executive Positions</option>
+                <option value="Class Representative" class="bg-gray-800">Class Representative</option>
+                <option value="Other" class="bg-gray-800">Other</option>
+              </select>
+              <div class="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                <i class="fas fa-chevron-down text-gray-400"></i>
+              </div>
+            </div>
+          </div>
+
+          <!-- Candidate Limit -->
+          <div class="space-y-2">
+            <label class="block text-sm font-medium text-gray-300">
+              Candidate Limit
+            </label>
+            <div class="relative">
+              <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <i class="fas fa-users text-gray-400"></i>
+              </div>
+              <input 
+                name="candidate_limit" 
+                type="number" 
+                min="2" 
+                max="50" 
+                placeholder="Maximum candidates (optional)"
+                class="w-full pl-10 pr-4 py-3 bg-white/5 border border-white/10 rounded-lg focus:border-blue-500/50 focus:ring-2 focus:ring-blue-500/20 focus:outline-none transition-all duration-300 text-white placeholder-gray-400"
+              >
+            </div>
+            <p class="text-xs text-gray-400">Leave empty for unlimited candidates</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Schedule Settings -->
+      <div class="space-y-6">
+        <div class="flex items-center space-x-3 pb-4 border-b border-white/10">
+          <div class="w-8 h-8 bg-gradient-to-r from-green-500 to-emerald-500 rounded-lg flex items-center justify-center">
+            <i class="fas fa-clock text-white text-sm"></i>
+          </div>
+          <h3 class="text-xl font-bold text-white">Schedule Settings</h3>
+        </div>
+
+        <div class="grid md:grid-cols-2 gap-6">
+          <!-- Start Time -->
+          <div class="space-y-2">
+            <label class="block text-sm font-medium text-gray-300">
+              Start Date & Time <span class="text-red-400">*</span>
+            </label>
+            <div class="relative">
+              <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <i class="fas fa-play text-gray-400"></i>
+              </div>
+              <input 
+                name="start_time" 
+                type="datetime-local" 
+                required
+                class="w-full pl-10 pr-4 py-3 bg-white/5 border border-white/10 rounded-lg focus:border-green-500/50 focus:ring-2 focus:ring-green-500/20 focus:outline-none transition-all duration-300 text-white"
+              >
+            </div>
+          </div>
+
+          <!-- End Time -->
+          <div class="space-y-2">
+            <label class="block text-sm font-medium text-gray-300">
+              End Date & Time <span class="text-red-400">*</span>
+            </label>
+            <div class="relative">
+              <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <i class="fas fa-stop text-gray-400"></i>
+              </div>
+              <input 
+                name="end_time" 
+                type="datetime-local" 
+                required
+                class="w-full pl-10 pr-4 py-3 bg-white/5 border border-white/10 rounded-lg focus:border-green-500/50 focus:ring-2 focus:ring-green-500/20 focus:outline-none transition-all duration-300 text-white"
+              >
+            </div>
+          </div>
+        </div>
+
+        <!-- Time Zone Info -->
+        <div class="glass-effect rounded-lg p-4 border border-yellow-500/20 bg-yellow-500/5">
+          <div class="flex items-center space-x-3">
+            <i class="fas fa-globe text-yellow-400"></i>
+            <div class="text-sm text-gray-300">
+              <strong class="text-yellow-400">Time Zone:</strong> Times will be automatically converted to IST (Indian Standard Time) for storage.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Election Rules -->
+      <div class="space-y-6">
+        <div class="flex items-center space-x-3 pb-4 border-b border-white/10">
+          <div class="w-8 h-8 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg flex items-center justify-center">
+            <i class="fas fa-gavel text-white text-sm"></i>
+          </div>
+          <h3 class="text-xl font-bold text-white">Election Rules & Settings</h3>
+        </div>
+
+        <div class="grid md:grid-cols-2 gap-6">
+          <div class="space-y-4">
+            <div class="flex items-center space-x-3">
+              <input type="checkbox" id="anonymous_voting" checked disabled class="w-4 h-4 rounded border-white/20 bg-white/5">
+              <label for="anonymous_voting" class="text-sm text-gray-300">Anonymous voting (always enabled)</label>
+            </div>
+            <div class="flex items-center space-x-3">
+              <input type="checkbox" id="real_time_results" checked disabled class="w-4 h-4 rounded border-white/20 bg-white/5">
+              <label for="real_time_results" class="text-sm text-gray-300">Real-time results (always enabled)</label>
+            </div>
+          </div>
+          <div class="space-y-4">
+            <div class="flex items-center space-x-3">
+              <input type="checkbox" id="single_vote" checked disabled class="w-4 h-4 rounded border-white/20 bg-white/5">
+              <label for="single_vote" class="text-sm text-gray-300">One vote per user (always enabled)</label>
+            </div>
+            <div class="flex items-center space-x-3">
+              <input type="checkbox" id="secure_voting" checked disabled class="w-4 h-4 rounded border-white/20 bg-white/5">
+              <label for="secure_voting" class="text-sm text-gray-300">Secure encryption (always enabled)</label>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Submit Section -->
+      <div class="pt-6 border-t border-white/10">
+        <div class="flex flex-col sm:flex-row gap-4">
+          <button 
+            type="submit"
+            class="flex-1 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-medium py-4 px-6 rounded-xl transition-all duration-300 transform hover:scale-[1.02] focus:outline-none focus:ring-2 focus:ring-blue-500/50"
+          >
+            <i class="fas fa-calendar-plus mr-2"></i>
+            Schedule Election
+          </button>
+          
+          <a 
+            href="{{ url_for('admin') }}"
+            class="flex-1 sm:flex-none px-6 py-4 border border-white/20 hover:bg-white/10 rounded-xl font-medium transition-all duration-300 text-center"
+          >
+            <i class="fas fa-times mr-2"></i>
+            Cancel
+          </a>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  <!-- Help Section -->
+  <div class="mt-8 glass-effect rounded-2xl p-6 border border-blue-500/20 bg-gradient-to-r from-blue-500/5 to-purple-500/5">
+    <div class="flex items-start space-x-4">
+      <div class="w-12 h-12 bg-gradient-to-r from-blue-500 to-purple-500 rounded-xl flex items-center justify-center flex-shrink-0">
+        <i class="fas fa-question-circle text-white text-lg"></i>
+      </div>
+      <div class="flex-1">
+        <h3 class="text-xl font-bold text-white mb-3">Scheduling Tips</h3>
+        <div class="grid md:grid-cols-3 gap-4 text-sm text-gray-300">
+          <div class="space-y-2">
+            <h4 class="font-semibold text-blue-400">Planning:</h4>
+            <ul class="space-y-1 list-disc list-inside">
+              <li>Allow enough time for candidate registration</li>
+              <li>Choose convenient voting hours</li>
+              <li>Avoid exam periods and holidays</li>
+              <li>Notify participants in advance</li>
+            </ul>
+          </div>
+          <div class="space-y-2">
+            <h4 class="font-semibold text-blue-400">Best Practices:</h4>
+            <ul class="space-y-1 list-disc list-inside">
+              <li>Set reasonable candidate limits</li>
+              <li>Give adequate voting duration</li>
+              <li>Test system before going live</li>
+              <li>Have backup communication plans</li>
+            </ul>
+          </div>
+          <div class="space-y-2">
+            <h4 class="font-semibold text-blue-400">After Scheduling:</h4>
+            <ul class="space-y-1 list-disc list-inside">
+              <li>Approve candidate applications</li>
+              <li>Monitor voting progress</li>
+              <li>Export results when complete</li>
+              <li>Announce winners officially</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
-(function(){
-  function setTz(){
-    const tzEls = document.querySelectorAll('input[name="tz_offset"]');
-    tzEls.forEach(e=> e.value = String(new Date().getTimezoneOffset()));
-  }
-  document.addEventListener('DOMContentLoaded', function(){
-    setTz();
-    // ensure hidden utc fields on submit
-    document.querySelectorAll('form').forEach(function(form){
-      form.addEventListener('submit', function(e){
-        // update tz just before submit
-        setTz();
-        console.log('[Schedule] Form submit - creating UTC hidden inputs');
-        form.querySelectorAll('input[type="datetime-local"]').forEach(function(local){
-          if(!local.name) return;
-          const v = local.value;
-          if(v){
-            // Create a Date object from the datetime-local value
-            const d = new Date(v);
-            if(!isNaN(d)){
-              // Convert to UTC using toISOString() which gives proper UTC representation
-              const utcStr = d.toISOString();
-              console.log('[Schedule] ' + local.name + ' (local):', v, '-> UTC:', utcStr);
-              
-              // Always create/update the hidden UTC input
-              let hidden = form.querySelector('input[name="'+local.name+'_utc"]');
-              if(!hidden){
-                hidden = document.createElement('input');
-                hidden.type = 'hidden';
-                hidden.name = local.name + '_utc';
-                form.appendChild(hidden);
-              }
-              hidden.value = utcStr;
-            }
-          }
-        });
-      });
-    });
+document.addEventListener('DOMContentLoaded', function() {
+  // Set minimum start time to current time
+  const now = new Date();
+  now.setMinutes(now.getMinutes() + 5); // Add 5 minutes buffer
+  const startInput = document.querySelector('input[name="start_time"]');
+  startInput.min = now.toISOString().slice(0, 16);
+  
+  // Update end time minimum when start time changes
+  startInput.addEventListener('change', function() {
+    const endInput = document.querySelector('input[name="end_time"]');
+    const startTime = new Date(this.value);
+    startTime.setHours(startTime.getHours() + 1); // Minimum 1 hour duration
+    endInput.min = startTime.toISOString().slice(0, 16);
   });
-})();
+
+  // Form submission handling
+  document.querySelector('form').addEventListener('submit', function(e) {
+    const submitBtn = this.querySelector('button[type="submit"]');
+    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Scheduling Election...';
+    submitBtn.disabled = true;
+  });
+});
 </script>
+
+{% endblock %}

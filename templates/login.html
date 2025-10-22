@@ -1,29 +1,244 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="auth-card card">
-  <style>
-    /* defensive: hide any stray pw-toggle button if present */
-    #pw-toggle{display:none !important}
-  </style>
-  <h2>Login</h2>
-  <form method="POST">
-    <input name="username" placeholder="Username" required>
-    <div class="input-group">
-      <input id="pwd" name="password" type="password" class="form-control" required>
-      <button class="btn btn-outline-secondary" type="button" onclick="togglePassword('pwd', this)">Show</button>
+
+<!-- Login Container -->
+<div class="min-h-[80vh] flex items-center justify-center py-12">
+  <div class="w-full max-w-md">
+    
+    <!-- Login Card -->
+    <div class="glass-effect rounded-3xl p-8 vote-card transition-all duration-500 border border-blue-500/20 bg-gradient-to-br from-blue-500/10 to-purple-500/5 relative overflow-hidden">
+      
+      <!-- Animated Background -->
+      <div class="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-blue-500/20 to-purple-500/20 rounded-full blur-2xl animate-pulse"></div>
+      <div class="absolute bottom-0 left-0 w-24 h-24 bg-gradient-to-tr from-purple-500/15 to-pink-500/15 rounded-full blur-xl animate-pulse" style="animation-delay: 1s;"></div>
+      
+      <div class="relative z-10">
+        <!-- Header -->
+        <div class="text-center mb-8">
+          <div class="w-20 h-20 bg-gradient-to-r from-blue-600 to-purple-600 rounded-3xl flex items-center justify-center mx-auto mb-6 animate-glow shadow-2xl">
+            <i class="fas fa-vote-yea text-3xl text-white"></i>
+          </div>
+          <h2 class="text-3xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent mb-2">
+            Welcome Back
+          </h2>
+          <p class="text-gray-400">Sign in to access your ClickVote dashboard</p>
+        </div>
+
+        <!-- Login Form -->
+        <form method="POST" class="space-y-6" id="loginForm">
+          
+          <!-- Username -->
+          <div class="space-y-2">
+            <label class="block text-sm font-medium text-gray-300 flex items-center">
+              <i class="fas fa-user mr-2 text-blue-400"></i>
+              Username <span class="text-red-400 ml-1">*</span>
+            </label>
+            <div class="relative group">
+              <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                <i class="fas fa-at text-gray-400 group-focus-within:text-blue-400 transition-colors"></i>
+              </div>
+              <input 
+                name="username" 
+                type="text"
+                placeholder="Enter your username" 
+                required
+                autocomplete="username"
+                class="w-full pl-12 pr-4 py-4 bg-white/5 border border-white/10 rounded-xl focus:border-blue-500/50 focus:ring-2 focus:ring-blue-500/20 focus:outline-none transition-all duration-300 text-white placeholder-gray-400 hover:bg-white/10"
+              >
+            </div>
+          </div>
+
+          <!-- Password with Toggle -->
+          <div class="space-y-2">
+            <label class="block text-sm font-medium text-gray-300 flex items-center">
+              <i class="fas fa-lock mr-2 text-purple-400"></i>
+              Password <span class="text-red-400 ml-1">*</span>
+            </label>
+            <div class="relative group">
+              <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                <i class="fas fa-key text-gray-400 group-focus-within:text-purple-400 transition-colors"></i>
+              </div>
+              <input 
+                id="loginPassword"
+                name="password" 
+                type="password" 
+                placeholder="••••••••••••••••"
+                required
+                autocomplete="current-password"
+                class="w-full pl-12 pr-14 py-4 bg-white/5 border border-white/10 rounded-xl focus:border-purple-500/50 focus:ring-2 focus:ring-purple-500/20 focus:outline-none transition-all duration-300 text-white placeholder-gray-400 hover:bg-white/10"
+              >
+              <!-- Password Toggle Button -->
+              <button 
+                type="button" 
+                onclick="togglePassword('loginPassword', this)"
+                class="absolute inset-y-0 right-0 pr-4 flex items-center text-gray-400 hover:text-white transition-colors focus:outline-none focus:text-purple-400"
+                tabindex="-1"
+              >
+                <i class="fas fa-eye text-lg"></i>
+              </button>
+            </div>
+            <p class="text-xs text-gray-400 flex items-center">
+              <i class="fas fa-shield-alt mr-1 text-green-400"></i>
+              Your password is encrypted and secure
+            </p>
+          </div>
+
+          <!-- Submit Button -->
+          <div class="space-y-4">
+            <button 
+              type="submit"
+              class="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-medium py-4 px-6 rounded-xl transition-all duration-300 transform hover:scale-[1.02] focus:outline-none focus:ring-2 focus:ring-purple-500/50 shadow-lg hover:shadow-blue-500/25 active:scale-[0.98]"
+              id="submitBtn"
+            >
+              <i class="fas fa-sign-in-alt mr-2"></i>
+              Sign In to ClickVote
+            </button>
+            
+            <!-- Loading State -->
+            <button 
+              id="loadingBtn"
+              type="button"
+              style="display: none;"
+              disabled
+              class="w-full bg-gradient-to-r from-gray-600 to-gray-700 text-white font-medium py-4 px-6 rounded-xl cursor-not-allowed"
+            >
+              <i class="fas fa-spinner fa-spin mr-2"></i>
+              Signing In...
+            </button>
+          </div>
+        </form>
+
+        <!-- Signup Link -->
+        <div class="relative my-6">
+          <div class="absolute inset-0 flex items-center">
+            <div class="w-full border-t border-white/10"></div>
+          </div>
+          <div class="relative flex justify-center text-sm">
+            <span class="px-4 bg-gradient-to-r from-navy-dark via-navy to-navy-dark text-gray-400">
+              Don't have an account?
+            </span>
+          </div>
+        </div>
+
+        <div class="space-y-3">
+          <a 
+            href="{{ url_for('signup') }}"
+            class="block w-full text-center px-6 py-4 border border-green-500/50 rounded-xl text-green-400 hover:bg-green-500/10 hover:border-green-400 transition-all duration-300 transform hover:scale-[1.02] font-medium"
+          >
+            <i class="fas fa-user-plus mr-2"></i>
+            Create Voter Account
+          </a>
+          
+          <a 
+            href="{{ url_for('candidate_signup') }}"
+            class="block w-full text-center px-6 py-3 text-purple-400 hover:text-purple-300 transition-colors text-sm hover:bg-purple-500/5 rounded-lg"
+          >
+            <i class="fas fa-user-tie mr-2"></i>
+            Apply as Candidate Instead
+          </a>
+        </div>
+
+        <!-- Admin Note -->
+        <div class="mt-6 p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-xl">
+          <div class="flex items-center space-x-2 text-sm">
+            <i class="fas fa-crown text-yellow-400"></i>
+            <div class="text-gray-300">
+              <strong class="text-yellow-400">Admin Access:</strong> Use <code class="bg-white/10 px-1 rounded">admin</code> / <code class="bg-white/10 px-1 rounded">admin123</code>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
-    <button class="btn primary" type="submit">Login</button>
-  </form>
-  <div class="text-center mt-2"><a href="{{ url_for('signup') }}">Create voter account</a></div>
+
+    <!-- Security Features -->
+    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-8">
+      <div class="glass-effect rounded-2xl p-4 text-center border border-white/5 hover:border-blue-500/20 transition-colors duration-300">
+        <div class="w-10 h-10 bg-blue-500/20 rounded-xl flex items-center justify-center mx-auto mb-3">
+          <i class="fas fa-shield-check text-blue-400"></i>
+        </div>
+        <h4 class="font-medium text-white text-sm mb-1">Secure Login</h4>
+        <p class="text-xs text-gray-400">End-to-end encryption</p>
+      </div>
+      
+      <div class="glass-effect rounded-2xl p-4 text-center border border-white/5 hover:border-purple-500/20 transition-colors duration-300">
+        <div class="w-10 h-10 bg-purple-500/20 rounded-xl flex items-center justify-center mx-auto mb-3">
+          <i class="fas fa-bolt text-purple-400"></i>
+        </div>
+        <h4 class="font-medium text-white text-sm mb-1">Fast Access</h4>
+        <p class="text-xs text-gray-400">Quick authentication</p>
+      </div>
+      
+      <div class="glass-effect rounded-2xl p-4 text-center border border-white/5 hover:border-green-500/20 transition-colors duration-300">
+        <div class="w-10 h-10 bg-green-500/20 rounded-xl flex items-center justify-center mx-auto mb-3">
+          <i class="fas fa-users text-green-400"></i>
+        </div>
+        <h4 class="font-medium text-white text-sm mb-1">Multi-Role</h4>
+        <p class="text-xs text-gray-400">Voter, Candidate, Admin</p>
+      </div>
+    </div>
+  </div>
 </div>
+
 <script>
-// Remove any stray "Show/Hide" buttons that may be injected by other scripts or stale markup.
-document.addEventListener('DOMContentLoaded', function(){
-  try{
-    document.querySelectorAll('button').forEach(function(b){
-      if(b.textContent && b.textContent.trim()==='Show/Hide') b.remove();
+// ENHANCED PASSWORD VISIBILITY TOGGLE
+function togglePassword(inputId, buttonElement) {
+  const input = document.getElementById(inputId);
+  const icon = buttonElement.querySelector('i');
+  
+  if (input.type === 'password') {
+    input.type = 'text';
+    input.placeholder = input.value || 'Your password is visible';
+    icon.classList.remove('fa-eye');
+    icon.classList.add('fa-eye-slash');
+    buttonElement.setAttribute('aria-label', 'Hide password');
+    buttonElement.classList.add('text-purple-400');
+    
+    // Show password briefly with security timer
+    setTimeout(() => {
+      if (input.type === 'text') {
+        togglePassword(inputId, buttonElement);
+      }
+    }, 10000); // Auto-hide after 10 seconds for security
+  } else {
+    input.type = 'password';
+    input.placeholder = '••••••••••••••••';
+    icon.classList.remove('fa-eye-slash');
+    icon.classList.add('fa-eye');
+    buttonElement.setAttribute('aria-label', 'Show password');
+    buttonElement.classList.remove('text-purple-400');
+  }
+}
+
+// Enhanced form handling
+document.addEventListener('DOMContentLoaded', function() {
+  const form = document.getElementById('loginForm');
+  const submitBtn = document.getElementById('submitBtn');
+  const loadingBtn = document.getElementById('loadingBtn');
+  
+  // Form submission with loading state
+  form.addEventListener('submit', function(e) {
+    submitBtn.style.display = 'none';
+    loadingBtn.style.display = 'block';
+  });
+
+  // Auto-focus username field
+  const usernameInput = form.querySelector('input[name="username"]');
+  if (usernameInput) {
+    usernameInput.focus();
+  }
+
+  // Add input animations
+  const inputs = form.querySelectorAll('input');
+  inputs.forEach(input => {
+    input.addEventListener('focus', function() {
+      this.parentElement.classList.add('scale-[1.02]', 'shadow-lg');
     });
-  }catch(e){console.warn('cleanup script failed', e)}
+    
+    input.addEventListener('blur', function() {
+      this.parentElement.classList.remove('scale-[1.02]', 'shadow-lg');
+    });
+  });
 });
 </script>
+
 {% endblock %}

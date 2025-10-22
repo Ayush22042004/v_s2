@@ -1,36 +1,507 @@
 {% extends "base.html" %}
 {% block content %}
-<h2>Voter Panel</h2>
-<div class="kanban">
-  <div>
-    <h3>Ongoing</h3>
-    <ul>{% for e in ongoing %}
-      <li><strong>{{ e.title or e.category }}</strong> • {{ e.start_time|istfmt }} → {{ e.end_time|istfmt }}
-        <form method="POST" action="{{ url_for('vote') }}">
-          <input type="hidden" name="election_id" value="{{ e.id }}">
-          <label>Choose Candidate</label>
-          <select name="candidate_id" required>
-            {% for c in cand_map.get(e.id, []) %}
-              <option value="{{ c.id }}">{{ c.name }}</option>
-            {% endfor %}
-          </select>
-          <button class="btn primary" type="submit">Vote</button>
-        </form>
-      </li>
-    {% else %}<li class="muted">No ongoing election</li>{% endfor %}</ul>
-  </div>
-  <div>
-    <h3>Upcoming</h3>
-    <ul>{% for e in scheduled %}
-      <li>{{ e.title or e.category }} • {{ e.start_time|istfmt }}</li>
-    {% else %}<li class="muted">None</li>{% endfor %}</ul>
-  </div>
-  <div>
-    <h3>Ended</h3>
-    <ul>{% for e in ended %}
-      <li>{{ e.title or e.category }} • {{ e.start_time|istfmt }} → {{ e.end_time|istfmt }}
-        <a href="{{ url_for('results', election_id=e.id) }}"></a></li>
-    {% else %}<li class="muted">None</li>{% endfor %}</ul>
+
+<div class="min-h-[90vh] py-8">
+  <div class="max-w-7xl mx-auto">
+    
+    <!-- Voter Dashboard Header -->
+    <div class="mb-8">
+      <div class="glass-effect rounded-3xl p-8 border border-green-500/20 bg-gradient-to-r from-green-500/10 to-emerald-500/5 relative overflow-hidden">
+        
+        <!-- Background Elements -->
+        <div class="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-green-500/15 to-emerald-500/15 rounded-full blur-3xl animate-pulse"></div>
+        <div class="absolute bottom-0 left-0 w-48 h-48 bg-gradient-to-tr from-emerald-500/10 to-cyan-500/10 rounded-full blur-2xl animate-pulse" style="animation-delay: 1.5s;"></div>
+        
+        <div class="relative z-10">
+          <div class="flex flex-col lg:flex-row items-center justify-between">
+            <div class="flex-1 mb-6 lg:mb-0">
+              <div class="flex items-center space-x-4 mb-4">
+                <div class="w-20 h-20 bg-gradient-to-r from-green-600 to-emerald-600 rounded-3xl flex items-center justify-center shadow-2xl animate-glow">
+                  <i class="fas fa-vote-yea text-white text-3xl"></i>
+                </div>
+                <div>
+                  <h1 class="text-4xl font-bold bg-gradient-to-r from-green-400 to-emerald-400 bg-clip-text text-transparent mb-2">
+                    Voter Dashboard
+                  </h1>
+                  <p class="text-gray-300 text-lg">Welcome, {{ session.username }}! Ready to make your voice heard?</p>
+                </div>
+              </div>
+              
+              <!-- Quick Stats -->
+              <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mt-6">
+                <div class="glass-effect rounded-xl p-4 border border-white/5 text-center">
+                  <div class="text-2xl font-bold text-green-400">{{ ongoing|length }}</div>
+                  <div class="text-xs text-gray-400">Active Elections</div>
+                </div>
+                <div class="glass-effect rounded-xl p-4 border border-white/5 text-center">
+                  <div class="text-2xl font-bold text-blue-400">{{ scheduled|length }}</div>
+                  <div class="text-xs text-gray-400">Upcoming</div>
+                </div>
+                <div class="glass-effect rounded-xl p-4 border border-white/5 text-center">
+                  <div class="text-2xl font-bold text-purple-400">{{ ended|length }}</div>
+                  <div class="text-xs text-gray-400">Completed</div>
+                </div>
+                <div class="glass-effect rounded-xl p-4 border border-white/5 text-center">
+                  <div class="text-2xl font-bold text-yellow-400">95%</div>
+                  <div class="text-xs text-gray-400">Participation</div>
+                </div>
+              </div>
+            </div>
+            
+            <!-- Action Buttons -->
+            <div class="flex flex-col space-y-3">
+              {% if ongoing %}
+              <a href="#ongoing-elections" class="px-6 py-3 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 rounded-xl font-medium transition-all duration-300 transform hover:scale-105 text-center">
+                <i class="fas fa-vote-yea mr-2"></i>Vote Now
+              </a>
+              {% endif %}
+              <a href="{{ url_for('candidate_signup') }}" class="px-6 py-3 border border-purple-500/50 hover:bg-purple-500/10 rounded-xl font-medium transition-all duration-300 text-center">
+                <i class="fas fa-user-plus mr-2"></i>Run for Office
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Elections Grid -->
+    <div class="space-y-8">
+      
+      <!-- Ongoing Elections -->
+      <div id="ongoing-elections">
+        <div class="flex items-center justify-between mb-6">
+          <div class="flex items-center space-x-3">
+            <div class="w-10 h-10 bg-gradient-to-r from-green-500 to-emerald-500 rounded-xl flex items-center justify-center">
+              <i class="fas fa-circle text-white animate-pulse"></i>
+            </div>
+            <h2 class="text-3xl font-bold text-white">Active Elections</h2>
+            <div class="px-4 py-2 bg-green-500/20 rounded-full text-green-400 text-sm font-medium border border-green-500/30 animate-pulse">
+              {{ ongoing|length }} Live Now
+            </div>
+          </div>
+          
+          {% if ongoing|length > 0 %}
+          <div class="text-sm text-gray-400 flex items-center">
+            <i class="fas fa-clock mr-2 text-green-400"></i>
+            Voting ends soon - don't miss out!
+          </div>
+          {% endif %}
+        </div>
+        
+        {% if ongoing %}
+        <div class="grid lg:grid-cols-2 gap-6">
+          {% for e in ongoing %}
+          <div class="glass-effect rounded-3xl p-8 border border-green-500/30 bg-gradient-to-br from-green-500/10 to-emerald-500/5 hover:border-green-400/50 transition-all duration-500 transform hover:scale-[1.02] relative overflow-hidden">
+            
+            <!-- Live Indicator -->
+            <div class="absolute top-4 right-4">
+              <div class="flex items-center space-x-2 px-3 py-1 bg-green-500/20 rounded-full border border-green-500/30">
+                <div class="w-2 h-2 bg-green-400 rounded-full animate-ping"></div>
+                <span class="text-green-400 text-xs font-medium">LIVE</span>
+              </div>
+            </div>
+            
+            <div class="mb-6">
+              <h3 class="text-2xl font-bold text-white mb-2">{{ e.title or e.category }}</h3>
+              <p class="text-gray-300 text-sm mb-4">{{ e.category }} • Year {{ e.year or "TBD" }}</p>
+              
+              <!-- Time Display -->
+              <div class="flex items-center space-x-2 text-sm text-gray-400 mb-4">
+                <i class="fas fa-clock text-green-400"></i>
+                <span>Started: {{ e.start_time|istfmt }}</span>
+              </div>
+              <div class="flex items-center space-x-2 text-sm text-gray-400">
+                <i class="fas fa-stopwatch text-red-400"></i>
+                <span>Ends: {{ e.end_time|istfmt }}</span>
+              </div>
+            </div>
+            
+            <!-- Candidates Preview -->
+            {% if cand_map.get(e.id) %}
+            <div class="mb-6">
+              <h4 class="text-lg font-semibold text-white mb-4 flex items-center">
+                <i class="fas fa-users mr-2 text-blue-400"></i>
+                Candidates ({{ cand_map[e.id]|length }})
+              </h4>
+              
+              <div class="grid grid-cols-2 gap-3 mb-6">
+                {% for c in cand_map[e.id][:4] %}
+                <div class="glass-effect rounded-xl p-3 border border-white/5 hover:border-blue-500/30 transition-colors">
+                  <div class="flex items-center space-x-3">
+                    <div class="w-10 h-10 bg-gradient-to-r 
+                      {% if loop.index == 1 %}from-blue-500 to-cyan-500
+                      {% elif loop.index == 2 %}from-purple-500 to-pink-500
+                      {% elif loop.index == 3 %}from-green-500 to-emerald-500
+                      {% else %}from-orange-500 to-red-500{% endif %} 
+                      rounded-xl flex items-center justify-center text-white font-bold text-sm">
+                      {{ c.name[0].upper() }}
+                    </div>
+                    <div class="flex-1 min-w-0">
+                      <p class="font-medium text-white text-sm truncate">{{ c.name }}</p>
+                      <p class="text-gray-400 text-xs">{{ c.category or 'Candidate' }}</p>
+                    </div>
+                  </div>
+                </div>
+                {% endfor %}
+                
+                {% if cand_map[e.id]|length > 4 %}
+                <div class="glass-effect rounded-xl p-3 border border-white/5 flex items-center justify-center">
+                  <span class="text-gray-400 text-sm">
+                    +{{ cand_map[e.id]|length - 4 }} more
+                  </span>
+                </div>
+                {% endif %}
+              </div>
+              
+              <!-- Voting Form -->
+              <form method="post" action="{{ url_for('vote') }}" class="space-y-4" onsubmit="return confirmVote(this, '{{ e.title or e.category }}')">
+                <input type="hidden" name="election_id" value="{{ e.id }}">
+                
+                <!-- Candidate Selection -->
+                <div class="space-y-2">
+                  <label class="block text-sm font-medium text-gray-300 mb-3">
+                    <i class="fas fa-hand-point-right mr-2 text-green-400"></i>
+                    Choose your candidate:
+                  </label>
+                  
+                  <div class="space-y-2 max-h-32 overflow-y-auto custom-scrollbar">
+                    {% for c in cand_map[e.id] %}
+                    <label class="cursor-pointer group block">
+                      <input type="radio" name="candidate_id" value="{{ c.id }}" required class="sr-only peer">
+                      <div class="flex items-center space-x-3 p-3 bg-white/5 rounded-xl border border-white/10 peer-checked:border-green-500/50 peer-checked:bg-green-500/10 hover:border-green-500/30 transition-all duration-300 group-hover:bg-white/10">
+                        <div class="w-8 h-8 bg-gradient-to-r 
+                          {% if loop.index == 1 %}from-blue-500 to-cyan-500
+                          {% elif loop.index == 2 %}from-purple-500 to-pink-500  
+                          {% elif loop.index == 3 %}from-green-500 to-emerald-500
+                          {% else %}from-orange-500 to-red-500{% endif %} 
+                          rounded-lg flex items-center justify-center text-white font-bold text-xs">
+                          {{ c.name[0].upper() }}
+                        </div>
+                        <div class="flex-1">
+                          <p class="font-medium text-white text-sm">{{ c.name }}</p>
+                          <p class="text-gray-400 text-xs">{{ c.category or 'Candidate' }}</p>
+                        </div>
+                        <div class="w-5 h-5 border-2 border-white/30 rounded-full peer-checked:bg-green-500 peer-checked:border-green-500 flex items-center justify-center">
+                          <i class="fas fa-check text-white text-xs opacity-0 peer-checked:opacity-100"></i>
+                        </div>
+                      </div>
+                    </label>
+                    {% endfor %}
+                  </div>
+                </div>
+                
+                <!-- Vote Button -->
+                <button 
+                  type="submit"
+                  class="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-medium py-4 px-6 rounded-xl transition-all duration-300 transform hover:scale-[1.02] focus:outline-none focus:ring-2 focus:ring-green-500/50 shadow-lg hover:shadow-green-500/25 active:scale-[0.98]"
+                >
+                  <i class="fas fa-vote-yea mr-2"></i>
+                  Cast Your Vote
+                </button>
+              </form>
+            </div>
+            {% else %}
+            <div class="text-center py-8">
+              <div class="w-16 h-16 bg-gray-500/20 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                <i class="fas fa-user-plus text-gray-400 text-2xl"></i>
+              </div>
+              <p class="text-gray-400 mb-4">No candidates registered yet</p>
+              <p class="text-gray-500 text-sm">Candidates can still register for this election</p>
+            </div>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="glass-effect rounded-3xl p-12 text-center border border-white/10">
+          <div class="w-24 h-24 bg-green-500/20 rounded-3xl flex items-center justify-center mx-auto mb-6">
+            <i class="fas fa-vote-yea text-green-400 text-3xl"></i>
+          </div>
+          <h3 class="text-2xl font-bold text-gray-400 mb-4">No Active Elections</h3>
+          <p class="text-gray-500 mb-6">Check back later or explore upcoming elections below.</p>
+          
+          {% if scheduled %}
+          <a href="#upcoming-elections" class="inline-flex items-center px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 rounded-xl font-medium transition-all duration-300">
+            <i class="fas fa-clock mr-2"></i>
+            View Upcoming Elections
+          </a>
+          {% endif %}
+        </div>
+        {% endif %}
+      </div>
+
+      <!-- Upcoming Elections -->
+      <div id="upcoming-elections">
+        <div class="flex items-center justify-between mb-6">
+          <div class="flex items-center space-x-3">
+            <div class="w-10 h-10 bg-gradient-to-r from-blue-500 to-purple-500 rounded-xl flex items-center justify-center">
+              <i class="fas fa-clock text-white"></i>
+            </div>
+            <h2 class="text-3xl font-bold text-white">Upcoming Elections</h2>
+            {% if scheduled %}
+            <div class="px-4 py-2 bg-blue-500/20 rounded-full text-blue-400 text-sm font-medium border border-blue-500/30">
+              {{ scheduled|length }} Scheduled
+            </div>
+            {% endif %}
+          </div>
+        </div>
+        
+        {% if scheduled %}
+        <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {% for e in scheduled %}
+          <div class="glass-effect rounded-2xl p-6 border border-blue-500/20 hover:border-blue-400/40 transition-all duration-300 transform hover:scale-[1.02]">
+            <div class="flex items-start justify-between mb-4">
+              <div>
+                <h3 class="text-xl font-bold text-white mb-2">{{ e.title or e.category }}</h3>
+                <p class="text-gray-400 text-sm">{{ e.category }} • {{ e.year or "TBD" }}</p>
+              </div>
+              <div class="px-3 py-1 bg-blue-500/20 rounded-full text-blue-400 text-xs font-medium border border-blue-500/30">
+                Soon
+              </div>
+            </div>
+            
+            <div class="space-y-2 text-sm">
+              <div class="flex items-center space-x-2 text-gray-400">
+                <i class="fas fa-play text-blue-400"></i>
+                <span>Starts: {{ e.start_time|istfmt }}</span>
+              </div>
+              <div class="flex items-center space-x-2 text-gray-400">
+                <i class="fas fa-stop text-purple-400"></i>
+                <span>Ends: {{ e.end_time|istfmt }}</span>
+              </div>
+            </div>
+            
+            <div class="mt-6 pt-4 border-t border-white/10">
+              <div class="flex items-center justify-between">
+                <span class="text-gray-400 text-sm">Status:</span>
+                <span class="text-blue-400 text-sm font-medium">Registration Open</span>
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="glass-effect rounded-2xl p-8 text-center border border-white/10">
+          <div class="w-16 h-16 bg-blue-500/20 rounded-2xl flex items-center justify-center mx-auto mb-4">
+            <i class="fas fa-calendar text-blue-400 text-2xl"></i>
+          </div>
+          <h3 class="text-xl font-bold text-gray-400 mb-2">No Upcoming Elections</h3>
+          <p class="text-gray-500">New elections will be announced here.</p>
+        </div>
+        {% endif %}
+      </div>
+
+      <!-- Completed Elections -->
+      <div>
+        <div class="flex items-center justify-between mb-6">
+          <div class="flex items-center space-x-3">
+            <div class="w-10 h-10 bg-gradient-to-r from-gray-500 to-slate-500 rounded-xl flex items-center justify-center">
+              <i class="fas fa-check-circle text-white"></i>
+            </div>
+            <h2 class="text-3xl font-bold text-white">Election History</h2>
+            {% if ended %}
+            <div class="px-4 py-2 bg-gray-500/20 rounded-full text-gray-400 text-sm font-medium border border-gray-500/30">
+              {{ ended|length }} Completed
+            </div>
+            {% endif %}
+          </div>
+        </div>
+        
+        {% if ended %}
+        <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-4">
+          {% for e in ended[:8] %}
+          <div class="glass-effect rounded-xl p-4 border border-gray-500/20 hover:border-gray-400/30 transition-colors duration-300">
+            <h3 class="font-bold text-white text-sm mb-2">{{ e.title or e.category }}</h3>
+            <p class="text-gray-400 text-xs mb-3">{{ e.category }} • {{ e.year or "N/A" }}</p>
+            
+            <div class="flex items-center justify-between">
+              <span class="px-2 py-1 bg-gray-500/20 rounded text-gray-400 text-xs">
+                Completed
+              </span>
+              <a href="{{ url_for('results', election_id=e.id) }}" class="text-blue-400 hover:text-blue-300 text-xs transition-colors">
+                View Results
+              </a>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <div class="glass-effect rounded-xl p-6 text-center border border-white/10">
+          <div class="w-12 h-12 bg-gray-500/20 rounded-xl flex items-center justify-center mx-auto mb-3">
+            <i class="fas fa-archive text-gray-400 text-lg"></i>
+          </div>
+          <h3 class="text-lg font-bold text-gray-400 mb-2">No Election History</h3>
+          <p class="text-gray-500 text-sm">Past elections will appear here.</p>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Voting Tips -->
+    <div class="mt-12 glass-effect rounded-2xl p-8 border border-yellow-500/20 bg-gradient-to-r from-yellow-500/5 to-orange-500/5">
+      <div class="flex items-start space-x-4">
+        <div class="w-12 h-12 bg-gradient-to-r from-yellow-500 to-orange-500 rounded-xl flex items-center justify-center flex-shrink-0">
+          <i class="fas fa-lightbulb text-white text-xl"></i>
+        </div>
+        <div class="flex-1">
+          <h3 class="text-xl font-bold text-white mb-4">Voting Tips & Guidelines</h3>
+          <div class="grid md:grid-cols-3 gap-6 text-sm">
+            <div>
+              <h4 class="font-semibold text-yellow-400 mb-2">Before Voting:</h4>
+              <ul class="space-y-1 text-gray-300">
+                <li>• Research all candidates</li>
+                <li>• Review their positions</li>
+                <li>• Check election deadlines</li>
+                <li>• Verify your registration</li>
+              </ul>
+            </div>
+            <div>
+              <h4 class="font-semibold text-yellow-400 mb-2">While Voting:</h4>
+              <ul class="space-y-1 text-gray-300">
+                <li>• Read all options carefully</li>
+                <li>• Vote for one candidate only</li>
+                <li>• Double-check your selection</li>
+                <li>• Submit before deadline</li>
+              </ul>
+            </div>
+            <div>
+              <h4 class="font-semibold text-yellow-400 mb-2">After Voting:</h4>
+              <ul class="space-y-1 text-gray-300">
+                <li>• Confirmation will be shown</li>
+                <li>• Cannot change your vote</li>
+                <li>• Results available after closing</li>
+                <li>• All votes are anonymous</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
+
+<style>
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(34, 197, 94, 0.5);
+  border-radius: 2px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(34, 197, 94, 0.7);
+}
+</style>
+
+<script>
+function confirmVote(form, electionTitle) {
+  const selectedCandidate = form.querySelector('input[name="candidate_id"]:checked');
+  
+  if (!selectedCandidate) {
+    showToast('Please select a candidate before voting.', 'warning');
+    return false;
+  }
+  
+  const candidateName = selectedCandidate.closest('label').querySelector('.font-medium').textContent;
+  
+  const confirmed = confirm(
+    `Are you sure you want to vote for "${candidateName}" in "${electionTitle}"?\n\n` +
+    `⚠️ IMPORTANT: You cannot change your vote once submitted.\n\n` +
+    `Click OK to confirm your vote or Cancel to go back.`
+  );
+  
+  if (confirmed) {
+    // Disable form to prevent double submission
+    const submitBtn = form.querySelector('button[type="submit"]');
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Submitting Vote...';
+    
+    // Add visual feedback
+    selectedCandidate.closest('label').classList.add('ring-2', 'ring-green-500', 'bg-green-500/20');
+    
+    return true;
+  }
+  
+  return false;
+}
+
+// Enhanced toast notifications
+function showToast(message, type = 'info') {
+  const toast = document.createElement('div');
+  toast.className = `fixed top-4 right-4 z-50 px-6 py-4 rounded-xl shadow-2xl transform translate-x-full transition-all duration-300 max-w-sm`;
+  
+  switch(type) {
+    case 'success':
+      toast.className += ' bg-green-500/90 border border-green-400/50 text-white';
+      break;
+    case 'warning':
+      toast.className += ' bg-yellow-500/90 border border-yellow-400/50 text-white';
+      break;
+    case 'error':
+      toast.className += ' bg-red-500/90 border border-red-400/50 text-white';
+      break;
+    default:
+      toast.className += ' bg-blue-500/90 border border-blue-400/50 text-white';
+  }
+  
+  toast.innerHTML = `
+    <div class="flex items-center space-x-3">
+      <i class="fas ${type === 'success' ? 'fa-check-circle' : type === 'warning' ? 'fa-exclamation-triangle' : type === 'error' ? 'fa-times-circle' : 'fa-info-circle'}"></i>
+      <span class="font-medium">${message}</span>
+    </div>
+  `;
+  
+  document.body.appendChild(toast);
+  
+  // Animate in
+  setTimeout(() => {
+    toast.classList.remove('translate-x-full');
+  }, 100);
+  
+  // Animate out and remove
+  setTimeout(() => {
+    toast.classList.add('translate-x-full');
+    setTimeout(() => {
+      document.body.removeChild(toast);
+    }, 300);
+  }, 4000);
+}
+
+// Auto-refresh for live elections
+document.addEventListener('DOMContentLoaded', function() {
+  // Refresh page every 2 minutes to show latest election status
+  const hasOngoingElections = {{ 'true' if ongoing else 'false' }};
+  
+  if (hasOngoingElections) {
+    setInterval(() => {
+      // Subtle refresh without disrupting user interaction
+      fetch(window.location.href)
+        .then(response => response.text())
+        .then(() => {
+          console.log('Election status updated');
+        })
+        .catch(console.error);
+    }, 120000); // 2 minutes
+  }
+
+  // Add smooth scrolling for anchor links
+  document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+    anchor.addEventListener('click', function (e) {
+      e.preventDefault();
+      const target = document.querySelector(this.getAttribute('href'));
+      if (target) {
+        target.scrollIntoView({
+          behavior: 'smooth',
+          block: 'start'
+        });
+      }
+    });
+  });
+});
+</script>
+
 {% endblock %}

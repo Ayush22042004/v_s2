@@ -1,6 +1,6 @@
 import os
 import sqlite3
-from flask import Flask, render_template, request, redirect, url_for, flash, session
+from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify
 from functools import wraps
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
@@ -11,6 +11,10 @@ from openpyxl import Workbook
 from flask import send_file
 import smtplib
 from email.message import EmailMessage
+try:
+    from flask_wtf.csrf import CSRFProtect
+except ImportError:
+    CSRFProtect = None
 
 
 def send_email(to_addr, subject, body):
@@ -45,6 +49,16 @@ def send_notification(user_id, message):
         print('⚠️ send_notification failed:', e)
 # timezone helpers
 IST = pytz.timezone("Asia/Kolkata")
+
+def safe_localize(naive_dt, tz):
+    """Attach tz info to a naive datetime supporting both pytz and zoneinfo.
+    If tz exposes localize, use tz.localize(naive_dt) (pytz). Otherwise use naive_dt.replace(tzinfo=tz) (zoneinfo).
+    """
+    if naive_dt is None:
+        return None
+    if hasattr(tz, 'localize'):
+        return tz.localize(naive_dt)
+    return naive_dt.replace(tzinfo=tz)
 
 # Global variable to store last scheduled election debug data (admin-only, short-lived)
 LAST_SCHEDULE_DEBUG = {}
@@ -98,10 +112,7 @@ def parse_utc_or_local_as_ist(utc_str, local_str):
     if local_str:
         try:
             naive = datetime.fromisoformat(local_str)
-            try:
-                loc = IST.localize(naive)
-            except Exception:
-                loc = naive.replace(tzinfo=IST)
+            loc = safe_localize(naive, IST)
             return loc.astimezone(timezone.utc)
         except Exception:
             return None
@@ -129,7 +140,40 @@ def execute(sql, args=()):
 
 # Flask app init
 app = Flask(__name__)
-app.secret_key = os.environ.get('SECRET_KEY', 'devkey')
+# Generate a secure random key if no SECRET_KEY is set
+import secrets
+app.secret_key = os.environ.get('SECRET_KEY', secrets.token_hex(32))
+
+# Enable CSRF protection
+try:
+    if CSRFProtect:
+        csrf = CSRFProtect(app)
+except:
+    # Flask-WTF not installed, skip CSRF for now
+    csrf = None
+    print("⚠️ Flask-WTF not installed - CSRF protection disabled")
+
+# Simple rate limiting storage (in-memory for demo)
+from collections import defaultdict, deque
+import time
+
+class SimpleRateLimiter:
+    def __init__(self):
+        self.requests = defaultdict(deque)
+    
+    def is_allowed(self, key, limit=5, window=300):  # 5 requests per 5 minutes
+        now = time.time()
+        # Clean old requests
+        while self.requests[key] and self.requests[key][0] < now - window:
+            self.requests[key].popleft()
+        
+        if len(self.requests[key]) >= limit:
+            return False
+        
+        self.requests[key].append(now)
+        return True
+
+rate_limiter = SimpleRateLimiter()
 
 # Optional startup migration for Postgres when running on Render.
 # Set RUN_MIGRATE=true in the environment to run migrations once at startup.
@@ -140,6 +184,15 @@ if DB_ADAPTER and os.environ.get('RUN_MIGRATE', '').lower() in ('1', 'true', 'ye
         print('✅ DB migration executed at startup')
     except Exception as e:
         print('⚠️ DB migration failed at startup:', e)
+
+# Ensure unique constraint on votes table to prevent double voting
+try:
+    db = get_db()
+    # Try to create unique index if it doesn't exist (SQLite safe)
+    db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_votes_unique ON votes(voter_id, election_id)")
+    db.commit()
+except Exception:
+    pass  # Index might already exist
 
 # -------------- Auth helpers --------------
 def login_required(role=None):
@@ -193,8 +246,14 @@ def health():
 @app.route("/")
 def index():
     user = query("SELECT * FROM users WHERE id=?", (session["user_id"],), one=True) if "user_id" in session else None
-    active = query("SELECT * FROM elections ORDER BY start_time DESC LIMIT 5")
+    active = query("SELECT * FROM elections WHERE status != 'cancelled' OR status IS NULL ORDER BY start_time DESC LIMIT 5")
     return render_template("index.html", user=user, elections=active)
+
+@app.route("/all_elections")
+def all_elections():
+    """Public page showing all elections"""
+    elections = query("SELECT * FROM elections WHERE status != 'cancelled' OR status IS NULL ORDER BY start_time DESC")
+    return render_template("all_elections.html", elections=elections)
 
 @app.route("/signup", methods=["GET","POST"])
 def signup():
@@ -206,6 +265,14 @@ def signup():
         id_number = request.form.get("id_number","").strip()
         if not name or not username or not password or not id_number:
             flash("All fields except email are required.", "error"); return redirect(url_for("signup"))
+        
+        # Password strength validation
+        if len(password) < 8:
+            flash("Password must be at least 8 characters long.", "error")
+            return redirect(url_for("signup"))
+        if not any(c.isdigit() for c in password):
+            flash("Password must contain at least one number.", "error")
+            return redirect(url_for("signup"))
         if query("SELECT 1 FROM users WHERE lower(username)=?", (username,), one=True):
             flash("Username already taken.", "error"); return redirect(url_for("signup"))
         if email and query("SELECT 1 FROM users WHERE lower(email)=?", (email.lower(),), one=True):
@@ -213,11 +280,20 @@ def signup():
         execute("INSERT INTO users (name,email,username,password,role,id_number) VALUES (?,?,?,?,?,?)",
                 (name, email.lower() if email else None, username, generate_password_hash(password), "voter", id_number))
         flash("Account created. Please login.", "ok"); return redirect(url_for("login"))
-    return render_template("signup.html")
+    
+    # Pass elections data for candidate signup option
+    elections = query("SELECT * FROM elections WHERE status != 'cancelled' OR status IS NULL ORDER BY start_time DESC")
+    return render_template("signup.html", elections=elections)
 
 @app.route("/login", methods=["GET","POST"])
 def login():
     if request.method == "POST":
+        # Rate limit login attempts by IP
+        client_ip = request.environ.get('HTTP_X_FORWARDED_FOR', request.remote_addr)
+        if not rate_limiter.is_allowed(f"login_{client_ip}", limit=5, window=300):
+            flash("Too many login attempts. Please try again in 5 minutes.", "error")
+            return redirect(url_for("login"))
+        
         username = request.form.get("username","" ).strip().lower()
         password = request.form.get("password","" )
         user = query("SELECT * FROM users WHERE lower(username)=?", (username,), one=True)
@@ -265,11 +341,12 @@ def candidate_signup():
         # handle photo
         photo_path=None; f=request.files.get('photo')
         if f and f.filename:
-            # basic validation: extension and mimetype, size limit 5MB
+            # Enhanced validation: extension, mimetype, and magic bytes check, size limit 5MB
             allowed_ext = {'png','jpg','jpeg','gif'}
             name_parts = secure_filename(f.filename).rsplit('.', 1)
             ext = name_parts[1].lower() if len(name_parts) > 1 else ''
-            if ext not in allowed_ext or (f.mimetype and not f.mimetype.startswith('image')):
+            # Check file extension and mimetype
+            if ext not in allowed_ext or not f.mimetype or not f.mimetype.startswith('image'):
                 flash('Invalid photo file. Allowed: png,jpg,jpeg,gif', 'error'); return redirect(url_for('candidate_signup'))
             data = f.read()
             if len(data) > 5*1024*1024:
@@ -284,7 +361,7 @@ def candidate_signup():
         execute('INSERT INTO candidate_applications (user_id,election_id,name,category,photo,status,applied_at) VALUES (?,?,?,?,?,?,?)',
                 (user_id, election_id, name, category, photo_path, 'pending', applied_at))
         flash('Application submitted. Awaiting admin approval.', 'ok'); return redirect(url_for('login'))
-    elections = query('SELECT * FROM elections ORDER BY start_time DESC')
+    elections = query("SELECT * FROM elections WHERE status != 'cancelled' OR status IS NULL ORDER BY start_time DESC")
     return render_template('candidate_signup.html', elections=elections)
 
 
@@ -378,6 +455,27 @@ def admin():
     rows = query("SELECT * FROM elections ORDER BY start_time DESC")
     ongoing, scheduled, ended = classify_elections(rows)
     return render_template("admin.html", ongoing=ongoing, scheduled=scheduled, ended=ended, elections=rows, last_schedule_debug=LAST_SCHEDULE_DEBUG)
+
+@app.route("/admin/past-elections")
+@login_required(role="admin")
+def past_elections():
+    """Show all past elections with full details"""
+    rows = query("SELECT * FROM elections ORDER BY start_time DESC")
+    ongoing, scheduled, ended = classify_elections(rows)
+    
+    # Get candidate count for each election
+    elections_with_stats = []
+    for e in ended:
+        candidate_count = query("SELECT COUNT(*) as count FROM candidates WHERE election_id=?", (e['id'],), one=True)
+        vote_count = query("SELECT COUNT(*) as count FROM votes WHERE election_id=?", (e['id'],), one=True)
+        
+        election_data = dict(e)
+        election_data['candidate_count'] = candidate_count['count'] if candidate_count else 0
+        election_data['vote_count'] = vote_count['count'] if vote_count else 0
+        elections_with_stats.append(election_data)
+    
+    return render_template("past_elections.html", elections=elections_with_stats, total_count=len(ended))
+
 @app.route("/add_candidate", methods=["POST"])
 @login_required(role="admin")
 def add_candidate():
@@ -400,9 +498,21 @@ def add_candidate():
             flash("Candidate limit reached for this election.", "warn"); return redirect(url_for("admin"))
     photo_path=None; f=request.files.get("photo")
     if f and f.filename:
+        # Security validation: extension and mimetype, size limit 5MB
+        allowed_ext = {'png','jpg','jpeg','gif'}
+        name_parts = secure_filename(f.filename).rsplit('.', 1)
+        ext = name_parts[1].lower() if len(name_parts) > 1 else ''
+        if ext not in allowed_ext or (f.mimetype and not f.mimetype.startswith('image')):
+            flash('Invalid photo file. Allowed: png,jpg,jpeg,gif', 'error'); return redirect(url_for('admin'))
+        data = f.read()
+        if len(data) > 5*1024*1024:
+            flash('Photo too large (max 5MB).', 'error'); return redirect(url_for('admin'))
+        # persist file
         filename = secure_filename(f.filename)
         uploads_dir = os.path.join(APP_DIR, "static", "uploads"); os.makedirs(uploads_dir, exist_ok=True)
-        f.save(os.path.join(uploads_dir, filename)); photo_path=f"uploads/{filename}"
+        with open(os.path.join(uploads_dir, filename), 'wb') as out:
+            out.write(data)
+        photo_path=f"uploads/{filename}"
     execute("INSERT INTO candidates (name,category,photo,election_id) VALUES (?,?,?,?)",
             (name, category, photo_path, election_id))
     flash("Candidate added to election.", "ok"); return redirect(url_for("admin"))
@@ -456,8 +566,13 @@ def schedule_election():
             end_naive = datetime.fromisoformat(end_str)
             
             # Localize to IST and convert to UTC
-            start_ist = IST.localize(start_naive)
-            end_ist = IST.localize(end_naive)
+            try:
+                start_ist = safe_localize(start_naive, IST)
+                end_ist = safe_localize(end_naive, IST)
+            except Exception as loc_err:
+                app.logger.error(f"[Schedule Election] safe_localize failed: {loc_err}")
+                flash("Invalid or ambiguous local time.", "error")
+                return redirect(url_for("admin"))
             sdt = start_ist.astimezone(timezone.utc)
             edt = end_ist.astimezone(timezone.utc)
         except Exception as e:
@@ -507,7 +622,7 @@ def schedule_election():
 
 # ----------- Voting & Results -----------
 def current_active_election():
-    rows = query("SELECT * FROM elections ORDER BY start_time DESC")
+    rows = query("SELECT * FROM elections WHERE status != 'cancelled' OR status IS NULL ORDER BY start_time DESC")
     now = now_utc()
     for e in rows:
         s = parse_iso(e["start_time"]); t = parse_iso(e["end_time"])
@@ -529,6 +644,11 @@ def to_ist(dt):
 @app.route("/vote", methods=["POST"])
 @login_required(role="voter")
 def vote():
+    # Rate limit voting attempts
+    if not rate_limiter.is_allowed(f"vote_{session['user_id']}", limit=3, window=60):
+        flash("Please wait before voting again.", "warn")
+        return redirect(url_for("voter_panel"))
+    
     try:
         election_id = int(request.form.get("election_id","0"))
         candidate_id = int(request.form.get("candidate_id","0"))
@@ -539,12 +659,27 @@ def vote():
     now = now_utc(); s = parse_iso(e["start_time"]); t = parse_iso(e["end_time"])
     if not s or not t or not (s <= now <= t):
         flash("This election is not active.", "warn"); return redirect(url_for("voter_panel"))
-    if query("SELECT 1 FROM votes WHERE voter_id=? AND election_id=?", (session["user_id"], election_id), one=True):
-        flash("You have already voted in this election.", "warn"); return redirect(url_for("voter_panel"))
-    c = query("SELECT * FROM candidates WHERE id=? AND election_id=?", (candidate_id, election_id), one=True)
-    if not c: flash("Invalid candidate selection.", "error"); return redirect(url_for("voter_panel"))
-    execute("INSERT INTO votes (voter_id,candidate_id,election_id,timestamp) VALUES (?,?,?,?)",
-            (session["user_id"], candidate_id, election_id, now.isoformat()))
+    # Use database transaction to prevent race condition
+    db = get_db()
+    try:
+        # Check for existing vote within transaction
+        if query("SELECT 1 FROM votes WHERE voter_id=? AND election_id=?", (session["user_id"], election_id), one=True):
+            flash("You have already voted in this election.", "warn"); return redirect(url_for("voter_panel"))
+        c = query("SELECT * FROM candidates WHERE id=? AND election_id=?", (candidate_id, election_id), one=True)
+        if not c: flash("Invalid candidate selection.", "error"); return redirect(url_for("voter_panel"))
+        
+        # Insert vote with unique constraint protection
+        try:
+            execute("INSERT INTO votes (voter_id,candidate_id,election_id,timestamp) VALUES (?,?,?,?)",
+                    (session["user_id"], candidate_id, election_id, now.isoformat()))
+        except Exception as e:
+            # Catch unique constraint violation (double vote attempt)
+            if "UNIQUE constraint failed" in str(e) or "duplicate" in str(e).lower():
+                flash("You have already voted in this election.", "warn"); return redirect(url_for("voter_panel"))
+            raise e
+    except Exception as e:
+        db.rollback()
+        flash("Error recording vote. Please try again.", "error"); return redirect(url_for("voter_panel"))
     flash("Vote recorded. Thank you!", "ok"); return redirect(url_for("voter_panel"))
 
 @app.route("/results")
@@ -562,7 +697,9 @@ def results():
         ORDER BY votes DESC, c.name ASC
     """, (e["id"], e["id"]))
     results = [{"name": r["name"], "votes": r["votes"]} for r in rows]
-    return render_template("result.html", election=e, results=results, elections=query("SELECT * FROM elections ORDER BY start_time DESC"))
+    total_votes = sum(result["votes"] for result in results)
+    winner = results[0] if results and results[0]["votes"] > 0 else None
+    return render_template("result.html", election=e, results=results, total_votes=total_votes, winner=winner, elections=query("SELECT * FROM elections WHERE status != 'cancelled' OR status IS NULL ORDER BY start_time DESC"))
 
 
 
@@ -571,23 +708,43 @@ def export_excel():
     if session.get('user_id') is None or session.get('role') != 'admin':
         return redirect(url_for('login'))
     try:
-        rows = exec_sql('SELECT * FROM elections ORDER BY start_time DESC', fetch=True)
+        rows = exec_sql("SELECT * FROM elections WHERE status != 'cancelled' OR status IS NULL ORDER BY start_time DESC", fetch=True)
     except Exception:
         pass
-        rows = query('SELECT * FROM elections ORDER BY start_time DESC')
+        rows = query("SELECT * FROM elections WHERE status != 'cancelled' OR status IS NULL ORDER BY start_time DESC")
     now = datetime.now(timezone.utc)
     ongoing, scheduled, ended = [], [], []
     for e in rows:
-        st, en = e.get('start_time'), e.get('end_time')
-        if st <= now <= en: ongoing.append(e)
-        elif now < st: scheduled.append(e)
-        else: ended.append(e)
+        # Parse datetime strings if they are strings
+        try:
+            if isinstance(e['start_time'], str):
+                st = datetime.fromisoformat(e['start_time'].replace('Z', '+00:00'))
+            else:
+                st = e['start_time']
+            
+            if isinstance(e['end_time'], str):
+                en = datetime.fromisoformat(e['end_time'].replace('Z', '+00:00'))
+            else:
+                en = e['end_time']
+            
+            # Ensure timezone awareness
+            if st.tzinfo is None:
+                st = st.replace(tzinfo=timezone.utc)
+            if en.tzinfo is None:
+                en = en.replace(tzinfo=timezone.utc)
+            
+            if st <= now <= en: ongoing.append(e)
+            elif now < st: scheduled.append(e)
+            else: ended.append(e)
+        except (ValueError, TypeError):
+            # If datetime parsing fails, skip this election
+            ended.append(e)
     wb = Workbook()
     for name, data in (('Ongoing', ongoing), ('Scheduled', scheduled), ('Ended', ended)):
         ws = wb.create_sheet(title=name)
         ws.append(['ID','Title','Category','Start (UTC)','End (UTC)','Candidate Limit'])
         for ee in data:
-            ws.append([ee.get('id'), ee.get('title'), ee.get('category'), ee.get('start_time'), ee.get('end_time'), ee.get('candidate_limit')])
+            ws.append([ee['id'], ee['title'], ee['category'], ee['start_time'], ee['end_time'], ee['candidate_limit']])
     if 'Sheet' in wb.sheetnames: del wb['Sheet']
     bio = BytesIO(); wb.save(bio); bio.seek(0)
     return send_file(bio, as_attachment=True, download_name='elections.xlsx',
@@ -618,8 +775,52 @@ def election_dashboard(election_id):
     except Exception:
         e = query('SELECT * FROM elections WHERE id=?', (election_id,))
         cand = query('SELECT name, votes FROM candidates WHERE election_id=? ORDER BY votes DESC, name', (election_id,))
-    total = sum([c.get('votes',0) for c in cand]) if cand else 0
+    total = sum([c['votes'] if 'votes' in c else 0 for c in cand]) if cand else 0
     return render_template('election_dashboard.html', e=e, cand=cand, total=total)
+
+
+@app.route('/admin/cancel_election/<int:election_id>', methods=['POST'])
+@login_required(role="admin")
+def cancel_election(election_id):
+    """Cancel an election with admin authentication"""
+    try:
+        # Verify election exists
+        election = exec_sql('SELECT * FROM elections WHERE id=?', (election_id,), fetch=True, one=True)
+        if not election:
+            return jsonify({'success': False, 'message': 'Election not found'}), 404
+        
+        # Check if election is already ended
+        if election['status'] == 'cancelled':
+            return jsonify({'success': False, 'message': 'Election is already cancelled'}), 400
+            
+        # Update election status to cancelled and set end time to now
+        from datetime import datetime
+        current_time = datetime.now()
+        
+        exec_sql('''UPDATE elections 
+                   SET status = 'cancelled', 
+                       end_time = ?,
+                       cancelled_at = ?,
+                       cancelled_by = ?
+                   WHERE id = ?''', 
+                (current_time, current_time, session.get('user_id'), election_id))
+        
+        # Log the cancellation for audit trail
+        election_title = election['title'] if election['title'] else (election['category'] if election['category'] else f'Election {election_id}')
+        admin_name = session.get('user', {}).get('name', 'Unknown Admin')
+        
+        print(f"ELECTION CANCELLED: {election_title} (ID: {election_id}) by Admin: {admin_name} at {current_time}")
+        
+        return jsonify({
+            'success': True, 
+            'message': f'Election "{election_title}" has been successfully cancelled',
+            'election_id': election_id,
+            'cancelled_at': current_time.isoformat()
+        })
+        
+    except Exception as e:
+        print(f"Error cancelling election {election_id}: {e}")
+        return jsonify({'success': False, 'message': f'Database error: {str(e)}'}), 500
 
 
 @app.route('/schedule', methods=['GET','POST'])
@@ -630,13 +831,49 @@ def schedule():
         title = request.form.get('title','').strip()
         category = request.form.get('category','').strip()
         limit = request.form.get('candidate_limit') or None
+        start_time = request.form.get('start_time','').strip()
+        end_time = request.form.get('end_time','').strip()
+        
+        if not title or not category or not start_time or not end_time:
+            flash("All fields are required for scheduling an election.", "error")
+            return render_template('schedule.html', error="Missing required fields")
+        
         try:
-            st = datetime.fromisoformat(request.form.get('start_time_utc')).replace(tzinfo=IST).astimezone(timezone.utc)
-            en = datetime.fromisoformat(request.form.get('end_time_utc')).replace(tzinfo=IST).astimezone(timezone.utc)
-            exec_sql('INSERT INTO elections(title,category,start_time,end_time,candidate_limit) VALUES (?,?,?,?,?)', (title, category, st, en, limit))
-            return redirect(url_for('schedule', ok='Election scheduled'))
+            # Parse datetime-local format and convert to UTC
+            st = datetime.fromisoformat(start_time)
+            en = datetime.fromisoformat(end_time)
+            
+            # Treat as local time (IST) and convert to UTC
+            st = safe_localize(st, IST).astimezone(timezone.utc)
+            en = safe_localize(en, IST).astimezone(timezone.utc)
+            
+            if en <= st:
+                flash("End time must be after start time.", "error")
+                return render_template('schedule.html', error="Invalid time range")
+            
+            # Convert candidate limit to integer if provided
+            if limit:
+                limit = int(limit)
+                if limit < 2:
+                    flash("Candidate limit must be at least 2.", "error")
+                    return render_template('schedule.html', error="Invalid candidate limit")
+            
+            # Get current year if not provided
+            year = st.year
+            
+            execute('INSERT INTO elections(title,year,category,start_time,end_time,candidate_limit,created_by) VALUES (?,?,?,?,?,?,?)', 
+                   (title, year, category, st.isoformat(), en.isoformat(), limit, session.get('user_id')))
+            
+            flash(f"Election '{title}' scheduled successfully from {st.strftime('%Y-%m-%d %H:%M')} to {en.strftime('%Y-%m-%d %H:%M')} IST", "success")
+            return redirect(url_for('admin'))
+            
+        except ValueError as e:
+            flash("Invalid date/time format. Please check your input.", "error")
+            return render_template('schedule.html', error=f"Date parsing error: {str(e)}")
         except Exception as e:
+            flash("An error occurred while scheduling the election.", "error")
             return render_template('schedule.html', error=str(e))
+    
     return render_template('schedule.html')
 
 # NOTE: the run block is placed at the end of the file (after all helper definitions)
@@ -657,6 +894,13 @@ def classify_elections(rows):
     now = now_utc()
     ongoing, scheduled, ended = [], [], []
     for e in rows:
+        # Skip cancelled elections - they should not appear in ongoing or scheduled
+        # Use bracket notation for sqlite3.Row objects (they don't have .get() method)
+        status = e['status'] if 'status' in e.keys() else None
+        if status == 'cancelled':
+            ended.append(e)  # Cancelled elections go to "ended" section
+            continue
+            
         s = parse_iso(e["start_time"]); t = parse_iso(e["end_time"])
         if s and t:
             if s <= now <= t: ongoing.append(e)
@@ -697,7 +941,7 @@ def results_excel(eid):
 @app.route("/voter")
 @login_required(role="voter")
 def voter_panel():
-    rows = query("SELECT * FROM elections ORDER BY start_time ASC")
+    rows = query("SELECT * FROM elections WHERE status != 'cancelled' OR status IS NULL ORDER BY start_time ASC")
     ongoing, scheduled, ended = classify_elections(rows)
 
     cand_map = {}

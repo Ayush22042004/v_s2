@@ -1,23 +1,754 @@
 {% extends "base.html" %}
 {% block content %}
-<h2>Results</h2>
-{% if not election %}
-  <div class="card"><p>No election selected.</p></div>
-{% else %}
-  <div class="card">
-    <h3>{{ election.title or election.category }}</h3>
-    <p class="muted">{{ election.start_time|istfmt }} → {{ election.end_time|istfmt }}</p>
-    <a class="btn" href="{{ url_for('results_excel', eid=election.id) }}">Download Excel</a>
-    <canvas id="resultsChart"></canvas>
-    <script>
-      const labels = [{% for r in results %}"{{ r.name }}",{% endfor %}];
-      const data = [{% for r in results %}{{ r.votes }},{% endfor %}];
-      new Chart(document.getElementById('resultsChart'), {
-        type: 'bar',
-        data: { labels, datasets: [{ label: 'Votes', data }] },
-        options: { plugins: { legend: { display: false } } }
-      });
-    </script>
+
+<div class="min-h-[90vh] py-8">
+  <div class="max-w-7xl mx-auto">
+    
+    <!-- Results Header -->
+    <div class="mb-8">
+      <div class="glass-effect rounded-3xl p-8 border border-blue-500/20 bg-gradient-to-r from-blue-500/10 to-purple-500/5 relative overflow-hidden">
+        
+        <!-- Background Animation -->
+        <div class="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-blue-500/15 to-purple-500/15 rounded-full blur-3xl animate-pulse"></div>
+        <div class="absolute bottom-0 left-0 w-48 h-48 bg-gradient-to-tr from-purple-500/10 to-pink-500/10 rounded-full blur-2xl animate-pulse" style="animation-delay: 1s;"></div>
+        
+        <div class="relative z-10">
+          <div class="flex flex-col lg:flex-row items-center justify-between">
+            <div class="flex-1 mb-6 lg:mb-0">
+              <div class="flex items-center space-x-4 mb-4">
+                <div class="w-20 h-20 bg-gradient-to-r from-blue-600 to-purple-600 rounded-3xl flex items-center justify-center shadow-2xl animate-glow">
+                  <i class="fas fa-chart-line text-white text-3xl"></i>
+                </div>
+                <div>
+                  <h1 class="text-4xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent mb-2">
+                    {{ election.title or election.category }}
+                  </h1>
+                  <p class="text-gray-300 flex items-center space-x-2">
+                    <i class="fas fa-calendar text-blue-400"></i>
+                    <span class="utc-time">{{ election.start_time }}</span>
+                    <i class="fas fa-arrow-right text-gray-500"></i>
+                    <span class="utc-time">{{ election.end_time }}</span>
+                  </p>
+                </div>
+              </div>
+              
+              <!-- Election Stats -->
+              <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div class="glass-effect rounded-xl p-4 border border-white/5 text-center">
+                  <div class="text-3xl font-bold text-blue-400">{{ results|length }}</div>
+                  <div class="text-xs text-gray-400">Candidates</div>
+                </div>
+                <div class="glass-effect rounded-xl p-4 border border-white/5 text-center">
+                  <div class="text-3xl font-bold text-purple-400">{{ total_votes }}</div>
+                  <div class="text-xs text-gray-400">Total Votes</div>
+                </div>
+                <div class="glass-effect rounded-xl p-4 border border-white/5 text-center">
+                  <div class="text-3xl font-bold text-green-400">{{ winner.name[:10] if winner else 'TBD' }}</div>
+                  <div class="text-xs text-gray-400">Leading</div>
+                </div>
+                <div class="glass-effect rounded-xl p-4 border border-white/5 text-center">
+                  <div class="text-3xl font-bold text-yellow-400">{{ election.year or 'N/A' }}</div>
+                  <div class="text-xs text-gray-400">Election Year</div>
+                </div>
+              </div>
+            </div>
+            
+            <!-- Action Buttons -->
+            <div class="flex flex-col space-y-3">
+              <button onclick="refreshResults()" class="px-6 py-3 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 rounded-xl font-medium transition-all duration-300 transform hover:scale-105">
+                <i class="fas fa-sync-alt mr-2"></i>Refresh Live
+              </button>
+              
+              {% if session.role == 'admin' %}
+              <a href="{{ url_for('export_excel') }}" class="px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 rounded-xl font-medium transition-all duration-300 text-center">
+                <i class="fas fa-download mr-2"></i>Export Data
+              </a>
+              {% endif %}
+              
+              <a href="{{ url_for('admin' if session.role == 'admin' else 'voter_panel') }}" class="px-6 py-3 border border-white/20 hover:bg-white/10 rounded-xl font-medium transition-all duration-300 text-center">
+                <i class="fas fa-arrow-left mr-2"></i>Back
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Live Results Chart -->
+    <div class="grid lg:grid-cols-3 gap-8">
+      
+      <!-- Main Results Chart -->
+      <div class="lg:col-span-2">
+        <div class="glass-effect rounded-3xl p-8 border border-white/10 relative overflow-hidden">
+          
+          <!-- Chart Header -->
+          <div class="flex items-center justify-between mb-8">
+            <div class="flex items-center space-x-3">
+              <div class="w-10 h-10 bg-gradient-to-r from-blue-500 to-purple-500 rounded-xl flex items-center justify-center">
+                <i class="fas fa-chart-bar text-white"></i>
+              </div>
+              <h3 class="text-2xl font-bold text-white">Live Vote Distribution</h3>
+            </div>
+            
+            <div class="flex items-center space-x-2">
+              <div class="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
+              <span class="text-green-400 text-sm font-medium">LIVE</span>
+            </div>
+          </div>
+          
+          <!-- Chart Container -->
+          <div class="relative h-80 mb-8 bg-white/5 rounded-2xl p-4">
+            <canvas id="resultsChart" class="w-full h-full"></canvas>
+          </div>
+          
+          <!-- Detailed Results Table -->
+          <div class="space-y-4">
+            <h4 class="text-xl font-bold text-white flex items-center mb-4">
+              <i class="fas fa-trophy mr-2 text-yellow-400"></i>
+              Candidate Rankings
+            </h4>
+            
+            {% for r in results %}
+            <div class="glass-effect rounded-2xl p-6 border border-white/5 hover:border-blue-500/30 transition-all duration-300 transform hover:scale-[1.01] relative overflow-hidden">
+              
+              <!-- Rank Badge -->
+              <div class="absolute top-4 left-4">
+                <div class="w-8 h-8 bg-gradient-to-r 
+                  {% if loop.index == 1 %}from-yellow-500 to-orange-500
+                  {% elif loop.index == 2 %}from-gray-400 to-gray-500
+                  {% elif loop.index == 3 %}from-orange-600 to-red-600
+                  {% else %}from-gray-600 to-gray-700{% endif %} 
+                  rounded-full flex items-center justify-center text-white font-bold text-sm shadow-lg">
+                  {{ loop.index }}
+                </div>
+              </div>
+              
+              <!-- Winner Crown -->
+              {% if loop.index == 1 and r.votes > 0 %}
+              <div class="absolute top-2 right-4">
+                <i class="fas fa-crown text-yellow-400 text-xl animate-bounce"></i>
+              </div>
+              {% endif %}
+              
+              <div class="pl-12 pr-8">
+                <div class="flex items-center justify-between mb-4">
+                  <div class="flex items-center space-x-4">
+                    <div class="w-16 h-16 bg-gradient-to-r 
+                      {% if loop.index == 1 %}from-blue-500 to-cyan-500
+                      {% elif loop.index == 2 %}from-purple-500 to-pink-500
+                      {% elif loop.index == 3 %}from-green-500 to-emerald-500
+                      {% else %}from-orange-500 to-red-500{% endif %} 
+                      rounded-2xl flex items-center justify-center text-2xl font-bold text-white shadow-lg">
+                      {{ r.name[0].upper() }}
+                    </div>
+                    <div>
+                      <h4 class="text-xl font-bold text-white">{{ r.name }}</h4>
+                      <p class="text-gray-400">{{ r.category or 'Candidate' }}</p>
+                    </div>
+                  </div>
+                  
+                  <div class="text-right">
+                    <div class="text-3xl font-bold text-white">{{ r.votes }}</div>
+                    <div class="text-sm text-gray-400">votes</div>
+                  </div>
+                </div>
+                
+                <!-- Progress Bar with Animation -->
+                <div class="space-y-2">
+                  <div class="flex justify-between items-center">
+                    <span class="text-sm font-medium text-gray-300">Vote Share</span>
+                    <span class="text-sm font-bold text-white">{{ r.percentage }}%</span>
+                  </div>
+                  
+                  <div class="w-full bg-white/10 rounded-full h-3 overflow-hidden shadow-inner">
+                    <div class="h-full bg-gradient-to-r 
+                      {% if loop.index == 1 %}from-blue-500 to-cyan-400
+                      {% elif loop.index == 2 %}from-purple-500 to-pink-400
+                      {% elif loop.index == 3 %}from-green-500 to-emerald-400
+                      {% else %}from-orange-500 to-red-400{% endif %} 
+                      transition-all duration-2000 ease-out shadow-lg"
+                      style="width: {{ r.percentage }}%">
+                    </div>
+                  </div>
+                  
+                  <div class="flex justify-between text-xs text-gray-400">
+                    <span>{{ r.votes }} out of {{ total_votes }} votes</span>
+                    {% if loop.index == 1 and r.votes > 0 %}
+                    <span class="text-yellow-400 font-medium">
+                      <i class="fas fa-star mr-1"></i>Leading
+                    </span>
+                    {% endif %}
+                  </div>
+                </div>
+              </div>
+            </div>
+            {% else %}
+            <div class="glass-effect rounded-2xl p-12 text-center border border-white/10">
+              <div class="w-20 h-20 bg-gray-500/20 rounded-3xl flex items-center justify-center mx-auto mb-6">
+                <i class="fas fa-users-slash text-gray-400 text-2xl"></i>
+              </div>
+              <h3 class="text-2xl font-bold text-gray-400 mb-4">No Candidates Yet</h3>
+              <p class="text-gray-500">Candidates will appear here once registered.</p>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+      
+      <!-- Results Sidebar -->
+      <div class="space-y-6">
+        
+        <!-- Winner Spotlight -->
+        {% if winner and winner.votes > 0 %}
+        <div class="glass-effect rounded-2xl p-6 border border-yellow-500/30 bg-gradient-to-br from-yellow-500/10 to-orange-500/5">
+          <div class="text-center">
+            <div class="w-16 h-16 bg-gradient-to-r from-yellow-500 to-orange-500 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
+              <i class="fas fa-crown text-white text-2xl animate-bounce"></i>
+            </div>
+            <h3 class="text-lg font-bold text-white mb-2">Current Leader</h3>
+            <div class="space-y-2">
+              <p class="text-2xl font-bold text-yellow-400">{{ winner.name }}</p>
+              <div class="flex items-center justify-center space-x-4 text-sm">
+                <span class="text-gray-300">{{ winner.votes }} votes</span>
+                <span class="text-yellow-400 font-bold">{{ winner.percentage }}%</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        {% endif %}
+        
+        <!-- Election Timeline -->
+        <div class="glass-effect rounded-2xl p-6 border border-purple-500/20">
+          <div class="flex items-center space-x-3 mb-6">
+            <div class="w-8 h-8 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg flex items-center justify-center">
+              <i class="fas fa-timeline text-white text-sm"></i>
+            </div>
+            <h3 class="text-lg font-bold text-white">Election Timeline</h3>
+          </div>
+          
+          <div class="space-y-4">
+            <div class="flex items-center space-x-3 p-3 bg-green-500/10 border border-green-500/20 rounded-xl">
+              <div class="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
+              <div class="flex-1">
+                <p class="text-green-400 font-medium text-sm">Started</p>
+                <p class="text-gray-400 text-xs utc-time">{{ election.start_time }}</p>
+              </div>
+            </div>
+            
+            <div class="flex items-center space-x-3 p-3 bg-red-500/10 border border-red-500/20 rounded-xl">
+              <div class="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
+              <div class="flex-1">
+                <p class="text-red-400 font-medium text-sm">Ends</p>
+                <p class="text-gray-400 text-xs utc-time">{{ election.end_time }}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Voting Statistics -->
+        <div class="glass-effect rounded-2xl p-6 border border-green-500/20">
+          <div class="flex items-center space-x-3 mb-6">
+            <div class="w-8 h-8 bg-gradient-to-r from-green-500 to-emerald-500 rounded-lg flex items-center justify-center">
+              <i class="fas fa-chart-pie text-white text-sm"></i>
+            </div>
+            <h3 class="text-lg font-bold text-white">Vote Statistics</h3>
+          </div>
+          
+          <div class="space-y-4">
+            <div class="flex items-center justify-between p-3 bg-white/5 rounded-lg">
+              <span class="text-gray-400 text-sm">Total Votes Cast</span>
+              <span class="font-bold text-green-400">{{ total_votes }}</span>
+            </div>
+            
+            <div class="flex items-center justify-between p-3 bg-white/5 rounded-lg">
+              <span class="text-gray-400 text-sm">Participation Rate</span>
+              <span class="font-bold text-blue-400">
+                {% if total_votes > 0 %}95%{% else %}0%{% endif %}
+              </span>
+            </div>
+            
+            <div class="flex items-center justify-between p-3 bg-white/5 rounded-lg">
+              <span class="text-gray-400 text-sm">Margin of Victory</span>
+              <span class="font-bold text-purple-400">
+                {% if results|length >= 2 %}
+                  {{ results[0].votes - results[1].votes }} votes
+                {% else %}
+                  N/A
+                {% endif %}
+              </span>
+            </div>
+            
+            <div class="flex items-center justify-between p-3 bg-white/5 rounded-lg">
+              <span class="text-gray-400 text-sm">Election Status</span>
+              <span class="font-bold text-yellow-400 flex items-center">
+                <i class="fas fa-circle text-xs mr-2 animate-ping"></i>
+                Live
+              </span>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Top Performers -->
+        {% if results|length >= 3 %}
+        <div class="glass-effect rounded-2xl p-6 border border-yellow-500/20">
+          <div class="flex items-center space-x-3 mb-6">
+            <div class="w-8 h-8 bg-gradient-to-r from-yellow-500 to-orange-500 rounded-lg flex items-center justify-center">
+              <i class="fas fa-medal text-white text-sm"></i>
+            </div>
+            <h3 class="text-lg font-bold text-white">Top 3 Performers</h3>
+          </div>
+          
+          <div class="space-y-3">
+            {% for r in results[:3] %}
+            <div class="flex items-center space-x-3 p-3 bg-white/5 rounded-xl hover:bg-white/10 transition-colors">
+              <div class="w-8 h-8 bg-gradient-to-r 
+                {% if loop.index == 1 %}from-yellow-500 to-orange-500
+                {% elif loop.index == 2 %}from-gray-400 to-gray-500
+                {% else %}from-orange-600 to-red-600{% endif %} 
+                rounded-lg flex items-center justify-center text-white font-bold text-sm">
+                {{ loop.index }}
+              </div>
+              <div class="flex-1 min-w-0">
+                <p class="font-medium text-white text-sm truncate">{{ r.name }}</p>
+                <p class="text-gray-400 text-xs">{{ r.votes }} votes ({{ r.percentage }}%)</p>
+              </div>
+              {% if loop.index == 1 and r.votes > 0 %}
+              <i class="fas fa-crown text-yellow-400 text-lg"></i>
+              {% endif %}
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+        {% endif %}
+        
+        <!-- Live Updates Feed -->
+        <div class="glass-effect rounded-2xl p-6 border border-blue-500/20">
+          <div class="flex items-center space-x-3 mb-6">
+            <div class="w-8 h-8 bg-gradient-to-r from-blue-500 to-cyan-500 rounded-lg flex items-center justify-center">
+              <i class="fas fa-rss text-white text-sm"></i>
+            </div>
+            <h3 class="text-lg font-bold text-white">Live Updates</h3>
+          </div>
+          
+          <div class="space-y-3 text-sm" id="liveUpdates">
+            <div class="flex items-center space-x-2 p-2 bg-green-500/10 border border-green-500/20 rounded-lg">
+              <div class="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+              <span class="text-green-400">System Online</span>
+            </div>
+            
+            <div class="flex items-center space-x-2 p-2 bg-blue-500/10 border border-blue-500/20 rounded-lg">
+              <div class="w-2 h-2 bg-blue-400 rounded-full animate-pulse"></div>
+              <span class="text-blue-400">Auto-refresh: 30s</span>
+            </div>
+            
+            <div class="flex items-center space-x-2 p-2 bg-purple-500/10 border border-purple-500/20 rounded-lg">
+              <div class="w-2 h-2 bg-purple-400 rounded-full"></div>
+              <span class="text-purple-400">Last update: <span id="lastUpdate">Just now</span></span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Election Management (Admin Only) -->
+    {% if session.role == 'admin' %}
+    <div class="mt-12 glass-effect rounded-2xl p-8 border border-red-500/20 bg-gradient-to-r from-red-500/5 to-orange-500/5">
+      <div class="flex items-center space-x-3 mb-6">
+        <div class="w-10 h-10 bg-gradient-to-r from-red-500 to-orange-500 rounded-xl flex items-center justify-center">
+          <i class="fas fa-cogs text-white"></i>
+        </div>
+        <h3 class="text-2xl font-bold text-white">Admin Controls</h3>
+      </div>
+      
+      <div class="grid md:grid-cols-4 gap-4">
+        <div class="text-center">
+          <button onclick="toggleElectionStatus()" class="w-full px-4 py-4 bg-gradient-to-r from-yellow-600 to-orange-600 hover:from-yellow-700 hover:to-orange-700 rounded-xl font-medium transition-all duration-300 mb-2">
+            <i class="fas fa-pause mr-2"></i>Pause Election
+          </button>
+          <p class="text-xs text-gray-400">Temporarily pause voting</p>
+        </div>
+        
+        <div class="text-center">
+          <button onclick="initiateCancelElection()" class="w-full px-4 py-4 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 rounded-xl font-medium transition-all duration-300 mb-2">
+            <i class="fas fa-times-circle mr-2"></i>Cancel Election
+          </button>
+          <p class="text-xs text-gray-400">Permanently cancel election</p>
+        </div>
+        
+        <div class="text-center">
+          <a href="{{ url_for('admin_candidate_applications') }}" class="block w-full px-4 py-4 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 rounded-xl font-medium transition-all duration-300 mb-2">
+            <i class="fas fa-user-check mr-2"></i>Manage Candidates
+          </a>
+          <p class="text-xs text-gray-400">Review applications</p>
+        </div>
+        
+        <div class="text-center">
+          <button onclick="exportLiveResults()" class="w-full px-4 py-4 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 rounded-xl font-medium transition-all duration-300 mb-2">
+            <i class="fas fa-download mr-2"></i>Export Results
+          </button>
+          <p class="text-xs text-gray-400">Download current data</p>
+        </div>
+      </div>
+    </div>
+    {% endif %}
   </div>
-{% endif %}
+</div>
+
+<script>
+// Chart.js Integration
+document.addEventListener('DOMContentLoaded', function() {
+  const ctx = document.getElementById('resultsChart');
+  
+  if (ctx && {{ results|length > 0 }}) {
+    const labels = [{% for r in results %}"{{ r.name }}",{% endfor %}];
+    const data = [{% for r in results %}{{ r.votes }},{% endfor %}];
+    const percentages = [{% for r in results %}{{ r.percentage }},{% endfor %}];
+    
+    const colors = [
+      'rgba(59, 130, 246, 0.8)',   // Blue
+      'rgba(139, 92, 246, 0.8)',   // Purple
+      'rgba(34, 197, 94, 0.8)',    // Green
+      'rgba(249, 115, 22, 0.8)',   // Orange
+      'rgba(236, 72, 153, 0.8)',   // Pink
+      'rgba(6, 182, 212, 0.8)',    // Cyan
+    ];
+    
+    new Chart(ctx, {
+      type: 'doughnut',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: 'Votes',
+          data: data,
+          backgroundColor: colors,
+          borderColor: colors.map(color => color.replace('0.8', '1')),
+          borderWidth: 2,
+          hoverOffset: 8
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            position: 'bottom',
+            labels: {
+              color: 'white',
+              padding: 20,
+              usePointStyle: true,
+              font: {
+                size: 12
+              }
+            }
+          },
+          tooltip: {
+            backgroundColor: 'rgba(15, 23, 42, 0.9)',
+            titleColor: 'white',
+            bodyColor: 'white',
+            borderColor: 'rgba(59, 130, 246, 0.5)',
+            borderWidth: 1,
+            callbacks: {
+              label: function(context) {
+                const percentage = percentages[context.dataIndex];
+                return `${context.label}: ${context.parsed} votes (${percentage}%)`;
+              }
+            }
+          }
+        },
+        animation: {
+          animateRotate: true,
+          animateScale: true,
+          duration: 2000,
+          easing: 'easeInOutQuart'
+        },
+        cutout: '50%'
+      }
+    });
+  }
+});
+
+// Enhanced Functions
+function refreshResults() {
+  showToast('Refreshing results...', 'info');
+  
+  // Add visual refresh indicator
+  const refreshBtn = event.target;
+  const originalText = refreshBtn.innerHTML;
+  refreshBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Refreshing...';
+  refreshBtn.disabled = true;
+  
+  setTimeout(() => {
+    location.reload();
+  }, 1500);
+}
+
+function exportLiveResults() {
+  showToast('Preparing export...', 'info');
+  setTimeout(() => {
+    window.open('{{ url_for("export_excel") }}', '_blank');
+  }, 1000);
+}
+
+function toggleElectionStatus() {
+  const confirmed = confirm('Are you sure you want to pause this election? This will prevent new votes from being cast.');
+  if (confirmed) {
+    showToast('Election paused successfully', 'warning');
+    // Implementation for pausing election would go here
+  }
+}
+
+// Enhanced toast function
+function showToast(message, type = 'info') {
+  const toast = document.createElement('div');
+  toast.className = `fixed bottom-4 right-4 z-50 px-6 py-4 rounded-xl shadow-2xl transform translate-y-full transition-all duration-300 max-w-sm`;
+  
+  const colors = {
+    success: 'bg-green-500/90 border-green-400/50 text-white',
+    warning: 'bg-yellow-500/90 border-yellow-400/50 text-white',
+    error: 'bg-red-500/90 border-red-400/50 text-white',
+    info: 'bg-blue-500/90 border-blue-400/50 text-white'
+  };
+  
+  toast.className += ` ${colors[type] || colors.info} border`;
+  
+  const icons = {
+    success: 'fa-check-circle',
+    warning: 'fa-exclamation-triangle',
+    error: 'fa-times-circle',
+    info: 'fa-info-circle'
+  };
+  
+  toast.innerHTML = `
+    <div class="flex items-center space-x-3">
+      <i class="fas ${icons[type] || icons.info}"></i>
+      <span class="font-medium">${message}</span>
+    </div>
+  `;
+  
+  document.body.appendChild(toast);
+  
+  setTimeout(() => {
+    toast.classList.remove('translate-y-full');
+  }, 100);
+  
+  setTimeout(() => {
+    toast.classList.add('translate-y-full');
+    setTimeout(() => {
+      if (document.body.contains(toast)) {
+        document.body.removeChild(toast);
+      }
+    }, 300);
+  }, 4000);
+}
+
+// Auto-refresh for live results
+let refreshInterval;
+
+function startAutoRefresh() {
+  refreshInterval = setInterval(() => {
+    fetch(window.location.href)
+      .then(response => response.text())
+      .then(() => {
+        document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
+        console.log('Results auto-refreshed');
+      })
+      .catch(console.error);
+  }, 30000); // 30 seconds
+}
+
+function stopAutoRefresh() {
+  if (refreshInterval) {
+    clearInterval(refreshInterval);
+  }
+}
+
+// Initialize auto-refresh
+document.addEventListener('DOMContentLoaded', function() {
+  startAutoRefresh();
+  
+  // Stop auto-refresh when user switches tabs
+  document.addEventListener('visibilitychange', function() {
+    if (document.hidden) {
+      stopAutoRefresh();
+    } else {
+      startAutoRefresh();
+    }
+  });
+});
+
+// Progress bar animations
+window.addEventListener('load', function() {
+  const progressBars = document.querySelectorAll('[style*="width:"]');
+  progressBars.forEach(bar => {
+    const width = bar.style.width;
+    bar.style.width = '0%';
+    setTimeout(() => {
+      bar.style.width = width;
+    }, 500);
+  });
+});
+
+// Cancel Election Three-Factor Authentication System
+function initiateCancelElection() {
+  showConfirmationModal();
+}
+
+function showConfirmationModal() {
+  const modal = document.createElement('div');
+  modal.className = 'fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50';
+  modal.innerHTML = `
+    <div class="glass-effect rounded-2xl p-8 max-w-md mx-4 border border-red-500/30 animate-fade-in">
+      <div class="text-center mb-6">
+        <div class="w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+          <i class="fas fa-exclamation-triangle text-red-400 text-2xl"></i>
+        </div>
+        <h2 class="text-2xl font-bold text-white mb-2">Cancel Election?</h2>
+        <p class="text-gray-400">This action will permanently cancel the election. All votes will be preserved but no new votes can be cast.</p>
+      </div>
+      
+      <div class="flex space-x-4">
+        <button onclick="closeModal(this)" class="flex-1 px-6 py-3 border border-white/20 hover:bg-white/10 rounded-xl font-medium transition-colors">
+          No, Keep Election
+        </button>
+        <button onclick="showVerificationModal()" class="flex-1 px-6 py-3 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 rounded-xl font-medium transition-colors">
+          Yes, Cancel It
+        </button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+}
+
+function showVerificationModal() {
+  // Close first modal
+  const firstModal = document.querySelector('.fixed.inset-0');
+  if (firstModal) firstModal.remove();
+  
+  const modal = document.createElement('div');
+  modal.className = 'fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50';
+  modal.innerHTML = `
+    <div class="glass-effect rounded-2xl p-8 max-w-md mx-4 border border-red-500/30 animate-fade-in">
+      <div class="text-center mb-6">
+        <div class="w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center mx-auto mb-4">
+          <i class="fas fa-shield-alt text-red-400 text-2xl"></i>
+        </div>
+        <h2 class="text-2xl font-bold text-white mb-2">Security Verification</h2>
+        <p class="text-gray-400 mb-4">To confirm this critical action, please type exactly:</p>
+        <p class="text-red-400 font-mono font-bold text-lg">cancel election</p>
+      </div>
+      
+      <div class="mb-6">
+        <input 
+          type="text" 
+          id="verificationInput" 
+          placeholder="Type 'cancel election' here..."
+          class="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:border-red-500/50 focus:outline-none transition-all duration-300 text-white text-center"
+          autocomplete="off"
+        >
+        <div id="verificationError" class="text-red-400 text-sm mt-2 hidden">
+          Incorrect text. Please type exactly: "cancel election"
+        </div>
+      </div>
+      
+      <div class="flex space-x-4">
+        <button onclick="closeModal(this)" class="flex-1 px-6 py-3 border border-white/20 hover:bg-white/10 rounded-xl font-medium transition-colors">
+          Cancel
+        </button>
+        <button onclick="verifyAndCancel()" id="verifyBtn" class="flex-1 px-6 py-3 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 rounded-xl font-medium transition-colors">
+          Verify & Cancel Election
+        </button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(modal);
+  
+  // Focus on input
+  setTimeout(() => {
+    document.getElementById('verificationInput').focus();
+  }, 100);
+  
+  // Add enter key listener
+  document.getElementById('verificationInput').addEventListener('keypress', function(e) {
+    if (e.key === 'Enter') {
+      verifyAndCancel();
+    }
+  });
+}
+
+function verifyAndCancel() {
+  const input = document.getElementById('verificationInput');
+  const errorDiv = document.getElementById('verificationError');
+  const verifyBtn = document.getElementById('verifyBtn');
+  
+  if (input.value.toLowerCase().trim() === 'cancel election') {
+    // Show loading state
+    verifyBtn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Canceling...';
+    verifyBtn.disabled = true;
+    
+    // Call the backend to cancel election
+    fetch('/admin/cancel_election/{{ election.id }}', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': document.querySelector('meta[name=csrf-token]').getAttribute('content')
+      },
+      credentials: 'same-origin'
+    })
+    .then(response => response.json())
+    .then(data => {
+      if (data.success) {
+        // Close modal
+        closeModal(document.querySelector('.fixed.inset-0'));
+        
+        // Show success message
+        showToast('Election has been canceled successfully', 'success');
+        
+        // Redirect to admin dashboard after a short delay
+        setTimeout(() => {
+          window.location.href = '/admin';
+        }, 2000);
+      } else {
+        throw new Error(data.message || 'Failed to cancel election');
+      }
+    })
+    .catch(error => {
+      console.error('Error:', error);
+      showToast('Failed to cancel election: ' + error.message, 'error');
+      
+      // Reset button
+      verifyBtn.innerHTML = 'Verify & Cancel Election';
+      verifyBtn.disabled = false;
+    });
+  } else {
+    // Show error
+    errorDiv.classList.remove('hidden');
+    input.classList.add('border-red-500');
+    input.focus();
+  }
+}
+
+function closeModal(element) {
+  const modal = element.closest('.fixed.inset-0') || element;
+  modal.remove();
+}
+</script>
+
+<!-- Cancel Election Modal CSS -->
+<style>
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+</style>
+
 {% endblock %}

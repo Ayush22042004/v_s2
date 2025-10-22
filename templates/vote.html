@@ -1,7 +1,79 @@
-{% extends "base.html" %}{% block content %}
-<h4>{{ e.title }} — Vote</h4><div class="small mb-2">{{ e.start_time|istfmt }} → {{ e.end_time|istfmt }}</div>
-<form method="post" class="vstack gap-2">{% for c in candidates %}
-<label class="border rounded p-2"><input type="radio" name="candidate_id" value="{{ c.id }}" required> {{ c.name }}</label>
-{% endfor %}<button class="btn btn-accent mt-2">Submit Vote</button></form>
-{% if voted %}<script>ok("Vote submitted!")</script>{% endif %}
+{% extends "base.html" %}
+{% block content %}
+
+<div class="max-w-2xl mx-auto">
+  <div class="glass-effect rounded-2xl p-8 border border-green-500/20">
+    
+    <!-- Vote Header -->
+    <div class="text-center mb-8">
+      <div class="w-16 h-16 bg-gradient-to-r from-green-600 to-emerald-600 rounded-2xl flex items-center justify-center mx-auto mb-4 animate-glow">
+        <i class="fas fa-vote-yea text-2xl text-white"></i>
+      </div>
+      <h2 class="text-2xl font-bold text-white mb-2">{{ e.title }} — Cast Your Vote</h2>
+      <div class="text-gray-400 text-sm flex items-center justify-center space-x-2">
+        <i class="fas fa-clock"></i>
+        <span>{{ e.start_time|istfmt }} → {{ e.end_time|istfmt }}</span>
+      </div>
+    </div>
+    
+    <!-- Voting Form -->
+    <form method="post" class="space-y-6">
+      {% for c in candidates %}
+      <label class="cursor-pointer group block">
+        <input type="radio" name="candidate_id" value="{{ c.id }}" required class="sr-only peer">
+        <div class="glass-effect rounded-xl p-6 border border-white/10 peer-checked:border-green-500/50 peer-checked:bg-green-500/10 hover:border-green-500/30 transition-all duration-300 transform hover:scale-[1.02]">
+          <div class="flex items-center space-x-4">
+            <div class="w-16 h-16 bg-gradient-to-r 
+              {% if loop.index == 1 %}from-blue-500 to-cyan-500
+              {% elif loop.index == 2 %}from-purple-500 to-pink-500
+              {% elif loop.index == 3 %}from-green-500 to-emerald-500
+              {% else %}from-orange-500 to-red-500{% endif %} 
+              rounded-2xl flex items-center justify-center text-xl font-bold text-white shadow-lg">
+              {{ c.name[0].upper() }}
+            </div>
+            <div class="flex-1">
+              <h3 class="text-xl font-bold text-white group-hover:text-green-400 transition-colors">{{ c.name }}</h3>
+              <p class="text-gray-400">{{ c.category or 'Candidate' }}</p>
+            </div>
+            <div class="w-6 h-6 border-2 border-white/30 rounded-full peer-checked:bg-green-500 peer-checked:border-green-500 flex items-center justify-center">
+              <i class="fas fa-check text-white text-sm opacity-0 peer-checked:opacity-100 transition-opacity"></i>
+            </div>
+          </div>
+        </div>
+      </label>
+      {% endfor %}
+      
+      <!-- Vote Button -->
+      <div class="pt-6 border-t border-white/10">
+        <button 
+          type="submit" 
+          class="w-full bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white font-medium py-4 px-6 rounded-xl transition-all duration-300 transform hover:scale-[1.02] focus:outline-none focus:ring-2 focus:ring-green-500/50"
+        >
+          <i class="fas fa-check-circle mr-2"></i>
+          Submit Vote
+        </button>
+      </div>
+    </form>
+
+    <!-- Security Notice -->
+    <div class="mt-6 glass-effect rounded-lg p-4 border border-blue-500/20 bg-blue-500/5">
+      <div class="flex items-center space-x-3">
+        <i class="fas fa-shield-alt text-blue-400"></i>
+        <div class="text-sm text-gray-300">
+          <strong class="text-blue-400">Secure Voting:</strong> Your vote is encrypted and anonymous. You can only vote once per election.
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Success Script -->
+{% if voted %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  showToast("Vote submitted successfully!");
+});
+</script>
+{% endif %}
+
 {% endblock %}

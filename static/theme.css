@@ -1,0 +1,95 @@
+:root{
+  /* Colors */
+  --bg: #071224;
+  --bg-2: #0b1220;
+  --surface: #0f1720;
+  --muted: #94a3b8;
+  --accent-1: #3b82f6; /* blue */
+  --accent-2: #8b5cf6; /* violet */
+  --text: #e6eef5;
+
+  /* Sizes */
+  --radius-lg: 18px;
+  --radius-md: 10px;
+  --shadow-soft: 0 12px 40px rgba(2,6,23,0.6);
+
+  /* Layout */
+  --container-max: 1200px;
+}
+
+/* Page background gradient */
+body{
+  background: linear-gradient(180deg, var(--bg) 0%, #071a2d 60%);
+}
+
+/* NAV */
+.nav-wrap{background:linear-gradient(180deg, rgba(255,255,255,0.02), transparent);border-bottom:1px solid rgba(255,255,255,0.02)}
+.nav{display:flex;justify-content:space-between;align-items:center;padding:18px 0}
+.brand{display:flex;align-items:center;gap:12px;color:var(--accent-1);font-weight:700;font-size:18px}
+.nav-links a{margin-left:18px;color:var(--muted)}
+.nav-links .cta{background:linear-gradient(90deg,var(--accent-1),var(--accent-2));padding:10px 14px;border-radius:12px;color:white;box-shadow:0 8px 30px rgba(139,92,246,0.12)}
+
+/* Hero */
+.hero{padding:48px 0 60px}
+.hero-inner{display:flex;gap:48px;align-items:center}
+.hero-copy{flex:1;min-width:300px}
+.badge{display:inline-block;background:rgba(59,130,246,0.08);color:var(--accent-1);padding:6px 10px;border-radius:12px;margin-bottom:22px;font-weight:600;font-size:13px}
+.hero-title{font-size:64px;line-height:1;margin:0 0 18px;color:var(--text)}
+.hero-sub{color:var(--muted);font-size:18px;max-width:640px}
+.hero-actions{margin-top:22px}
+.btn{display:inline-block;padding:10px 16px;border-radius:10px;font-weight:700}
+.btn.primary{background:linear-gradient(90deg,var(--accent-1),var(--accent-2));color:#fff;border:0}
+.btn.ghost{background:transparent;border:1px solid rgba(255,255,255,0.04);color:var(--muted);margin-left:10px}
+
+/* Preview card on right of hero */
+.hero-preview{width:460px}
+.preview-card{
+  border-radius:var(--radius-lg);
+  padding:32px;
+  background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+  position:relative;
+  box-shadow:var(--shadow-soft);
+  border:4px solid transparent;
+  overflow:hidden;
+}
+.preview-card::after{
+  content:"";
+  position:absolute;inset:-3px;border-radius:22px;
+  background:linear-gradient(90deg,var(--accent-1),var(--accent-2));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  padding:4px;
+  pointer-events:none;
+  opacity:0.95;
+}
+.preview-icon{font-size:28px;text-align:center;margin-bottom:8px}
+.preview-card h3{color:#dbeafe;text-align:center;margin-top:6px}
+.bar{height:10px;background:rgba(255,255,255,0.04);border-radius:999px;margin-top:20px;overflow:hidden}
+.bar-fill{height:100%;background:linear-gradient(90deg,var(--accent-1),var(--accent-2));border-radius:999px}
+
+/* How it works */
+.section-title{font-size:36px;color:var(--text);text-align:center;margin-bottom:8px}
+.section-sub{color:var(--muted);text-align:center;margin-bottom:36px}
+.steps{display:flex;gap:28px;justify-content:space-between}
+.step{flex:1;background:transparent;padding:22px;border-radius:12px;text-align:center}
+.step-num{width:64px;height:64px;border-radius:50%;background:linear-gradient(90deg,var(--accent-1),var(--accent-2));display:inline-flex;align-items:center;justify-content:center;color:white;font-weight:700;margin-bottom:12px}
+
+/* Language stats widget */
+.lang-stats{max-width:520px;margin:18px 0}
+.ls-title{font-weight:700;color:var(--text);margin-bottom:8px}
+.ls-bar{height:12px;border-radius:999px;overflow:hidden;background:rgba(255,255,255,0.02);display:flex;box-shadow:0 6px 18px rgba(2,6,23,0.5)}
+.ls-segment{height:100%}
+.ls-legend{display:flex;gap:18px;margin-top:12px;flex-wrap:wrap}
+.ls-legend-item{display:flex;gap:8px;align-items:center;color:var(--muted);font-size:13px}
+.ls-dot{width:12px;height:12px;border-radius:50%;border:2px solid rgba(255,255,255,0.04)}
+
+/* Footer text muted */
+.muted{color:var(--muted);margin-top:6px}
+
+/* Responsive */
+@media (max-width:900px){
+  .hero-title{font-size:42px}
+  .hero-inner{flex-direction:column}
+  .hero-preview{width:100%}
+  .steps{flex-direction:column}
+}

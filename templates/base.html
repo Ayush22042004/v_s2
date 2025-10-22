@@ -3,54 +3,305 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{{ title or "Voting System" }}</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <meta name="csrf-token" content="{{ csrf_token() if csrf_token else '' }}">
+  <title>{{ title or "ClickVote - Club & Class Elections" }}</title>
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            'navy': '#0f172a',
+            'navy-light': '#1e293b',
+            'navy-dark': '#0b1020',
+            'blue-glow': '#3b82f6',
+            'purple-glow': '#8b5cf6',
+          },
+          animation: {
+            'glow': 'glow 2s ease-in-out infinite alternate',
+            'float': 'float 3s ease-in-out infinite',
+          }
+        }
+      }
+    }
+  </script>
+  
+  <!-- Custom Styles -->
+  <style>
+    @keyframes glow {
+      from { box-shadow: 0 0 20px rgba(59, 130, 246, 0.3); }
+      to { box-shadow: 0 0 30px rgba(59, 130, 246, 0.6); }
+    }
+    @keyframes float {
+      0%, 100% { transform: translateY(0px); }
+      50% { transform: translateY(-10px); }
+    }
+    .glass-effect {
+      backdrop-filter: blur(12px);
+      background: rgba(15, 23, 42, 0.7);
+      border: 1px solid rgba(59, 130, 246, 0.2);
+    }
+    .vote-card:hover {
+      transform: translateY(-8px);
+      box-shadow: 0 25px 50px -12px rgba(59, 130, 246, 0.25);
+    }
+    /* Enhanced Dropdown Behavior */
+    .nav-dropdown {
+      position: relative;
+    }
+    
+    .nav-dropdown .dropdown-content {
+      display: none;
+      position: absolute;
+      top: 100%;
+      left: 0;
+      margin-top: 0.5rem;
+      opacity: 0;
+      transform: translateY(-10px);
+      transition: all 0.3s ease-in-out;
+      z-index: 50;
+    }
+    
+    .nav-dropdown:hover .dropdown-content,
+    .nav-dropdown .dropdown-content:hover {
+      display: block;
+      opacity: 1;
+      transform: translateY(0);
+    }
+    
+    /* Add a bridge area to prevent dropdown from disappearing */
+    .nav-dropdown::after {
+      content: '';
+      position: absolute;
+      top: 100%;
+      left: 0;
+      right: 0;
+      height: 0.5rem;
+      background: transparent;
+    }
+    
+    .nav-dropdown:hover::after {
+      display: block;
+    }
+  </style>
+  
+  <!-- Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/mobile_patch.css') }}">
+  
+  <!-- Font Awesome -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
+
 {% set _flashes = get_flashed_messages(with_categories=true) %}
-<body data-theme="dark" data-flashes='{{ _flashes|tojson|e }}'>
-  <nav class="topbar">
-    <div class="brand">🗳️ VOTE</div>
-    <div class="nav-right">
-      {% if session.get('user_id') %}
-        {% if unread_notifications and unread_notifications > 0 %}
-          <a class="btn small" href="{{ url_for('candidate_profile') }}">🔔 <span class="badge">{{ unread_notifications }}</span></a>
-        {% else %}
-          <a class="btn small" href="{{ url_for('candidate_profile') }}">🔔</a>
-        {% endif %}
-        <span class="muted">Hi, <span class="muted">
-  {% if session.get('user') and session['user'].get('role') == 'admin' %}
-    Admin
-  {% elif session.get('user') and session['user'].get('username') %}
-    {{ session['user'].get('username') }}
-  {% elif session.get('username') %}
-    {{ session['username'] }}
-  {% else %}
-    Guest
-  {% endif %}
-</span></span>
-        <a class="btn small" href="{{ url_for('logout') }}">Logout</a>
-  {% if session.get('user') and session['user'].get('role')=='admin' %}
-    <a class="nav-link" href="{{ url_for('schedule') }}">Schedule</a>
-  {% endif %}
-      {% else %}
-        <a class="btn small" href="{{ url_for('login') }}">Login</a>
-        <a class="btn small" href="{{ url_for('signup') }}">Sign up</a>
-      {% endif %}
+<body class="bg-gradient-to-br from-navy-dark via-navy to-navy-light text-white min-h-screen" data-theme="dark" data-flashes='{{ _flashes|tojson|e }}'>
+  
+  <!-- Navigation Bar -->
+  <nav class="glass-effect sticky top-0 z-50 border-b border-blue-500/20">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex justify-between items-center h-16">
+        
+        <!-- Logo -->
+        <a href="{{ url_for('index') }}" class="flex items-center space-x-3 hover:opacity-80 transition-opacity duration-300">
+          <div class="w-10 h-10 bg-gradient-to-r from-blue-glow to-purple-glow rounded-lg flex items-center justify-center animate-float">
+            <i class="fas fa-vote-yea text-white text-lg"></i>
+          </div>
+          <span class="text-xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
+            ClickVote
+          </span>
+        </a>
+
+        <!-- Navigation Links -->
+        <div class="hidden md:flex items-center space-x-6">
+          {% if session.get('user_id') %}
+            
+            <!-- Main Menu -->
+            <div class="nav-dropdown relative">
+              <button class="flex items-center space-x-2 px-4 py-2 rounded-lg hover:bg-white/10 transition-all duration-300">
+                <i class="fas fa-th-large"></i>
+                <span>Dashboard</span>
+                <i class="fas fa-chevron-down text-sm"></i>
+              </button>
+              <div class="dropdown-content hidden absolute top-full left-0 mt-2 w-48 glass-effect rounded-xl shadow-xl">
+                <a href="{{ url_for('index') }}" class="block px-4 py-3 hover:bg-white/10 rounded-t-xl transition-colors">
+                  <i class="fas fa-home mr-2"></i>Home
+                </a>
+                {% if session.get('user') and session['user'].get('role') == 'admin' %}
+                  <a href="{{ url_for('admin') }}" class="block px-4 py-3 hover:bg-white/10 transition-colors">
+                    <i class="fas fa-cog mr-2"></i>Admin Panel
+                  </a>
+                  <a href="{{ url_for('schedule') }}" class="block px-4 py-3 hover:bg-white/10 transition-colors">
+                    <i class="fas fa-calendar mr-2"></i>Schedule Elections
+                  </a>
+                  <a href="{{ url_for('results') }}" class="block px-4 py-3 hover:bg-white/10 transition-colors">
+                    <i class="fas fa-chart-bar mr-2"></i>Results
+                  </a>
+                {% else %}
+                  <a href="{{ url_for('voter_panel') }}" class="block px-4 py-3 hover:bg-white/10 transition-colors">
+                    <i class="fas fa-vote-yea mr-2"></i>Vote Now
+                  </a>
+                  <a href="{{ url_for('candidate_signup') }}" class="block px-4 py-3 hover:bg-white/10 rounded-b-xl transition-colors">
+                    <i class="fas fa-user-plus mr-2"></i>Apply as Candidate
+                  </a>
+                {% endif %}
+              </div>
+            </div>
+
+            <!-- User Menu -->
+            <div class="nav-dropdown relative">
+              <button class="flex items-center space-x-2 px-4 py-2 rounded-lg hover:bg-white/10 transition-all duration-300">
+                <div class="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-500 rounded-full flex items-center justify-center">
+                  <i class="fas fa-user text-sm"></i>
+                </div>
+                <span class="text-sm">
+                  {% if session.get('user') and session['user'].get('role') == 'admin' %}
+                    Admin
+                  {% elif session.get('user') and session['user'].get('username') %}
+                    {{ session['user'].get('username') }}
+                  {% elif session.get('username') %}
+                    {{ session['username'] }}
+                  {% else %}
+                    Guest
+                  {% endif %}
+                </span>
+                <i class="fas fa-chevron-down text-sm"></i>
+              </button>
+              <div class="dropdown-content hidden absolute top-full right-0 mt-2 w-48 glass-effect rounded-xl shadow-xl">
+                <a href="{{ url_for('candidate_profile') }}" class="block px-4 py-3 hover:bg-white/10 rounded-t-xl transition-colors">
+                  <i class="fas fa-user-circle mr-2"></i>Profile
+                  {% if unread_notifications and unread_notifications > 0 %}
+                    <span class="float-right bg-red-500 text-xs rounded-full px-2 py-1">{{ unread_notifications }}</span>
+                  {% endif %}
+                </a>
+                <a href="{{ url_for('logout') }}" class="block px-4 py-3 hover:bg-red-500/20 rounded-b-xl transition-colors text-red-400">
+                  <i class="fas fa-sign-out-alt mr-2"></i>Logout
+                </a>
+              </div>
+            </div>
+
+          {% else %}
+            <!-- Guest Navigation -->
+            <a href="{{ url_for('login') }}" class="px-6 py-2 rounded-lg border border-blue-500/50 hover:bg-blue-500/10 transition-all duration-300">
+              Login
+            </a>
+            <a href="{{ url_for('signup') }}" class="px-6 py-2 rounded-lg bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 transition-all duration-300 font-medium">
+              Sign Up
+            </a>
+          {% endif %}
+        </div>
+
+        <!-- Mobile Menu Button -->
+        <div class="md:hidden">
+          <button id="mobile-menu-btn" class="p-2 rounded-lg hover:bg-white/10 transition-colors">
+            <i class="fas fa-bars text-lg"></i>
+          </button>
+        </div>
+      </div>
     </div>
-  </nav>
-  <main class="container">
+
+    <!-- Mobile Menu -->
+    <div id="mobile-menu" class="hidden md:hidden glass-effect border-t border-white/10">
+      <div class="px-4 py-4 space-y-2">
+        {% if session.get('user_id') %}
+          <a href="{{ url_for('index') }}" class="block px-4 py-3 rounded-lg hover:bg-white/10 transition-colors">
+            <i class="fas fa-home mr-2"></i>Home
+          </a>
+          {% if session.get('user') and session['user'].get('role') == 'admin' %}
+            <a href="{{ url_for('admin') }}" class="block px-4 py-3 rounded-lg hover:bg-white/10 transition-colors">
+              <i class="fas fa-cog mr-2"></i>Admin Panel
+            </a>
+          {% else %}
+            <a href="{{ url_for('voter_panel') }}" class="block px-4 py-3 rounded-lg hover:bg-white/10 transition-colors">
+              <i class="fas fa-vote-yea mr-2"></i>Vote Now
+            </a>
+          {% endif %}
+          <a href="{{ url_for('logout') }}" class="block px-4 py-3 rounded-lg hover:bg-red-500/20 transition-colors text-red-400">
+            <i class="fas fa-sign-out-alt mr-2"></i>Logout
+          </a>
+        {% else %}
+          <a href="{{ url_for('login') }}" class="block px-4 py-3 rounded-lg hover:bg-white/10 transition-colors">Login</a>
+          <a href="{{ url_for('signup') }}" class="block px-4 py-3 rounded-lg bg-gradient-to-r from-blue-600 to-purple-600 text-center">Sign Up</a>
+        {% endif %}
+      </div>
+    </div>
+</nav>
+
+  <!-- Main Content -->
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    
+    <!-- Flash Messages -->
     {% with msgs = get_flashed_messages(with_categories=true) %}
       {% if msgs %}
-        <div class="flash-wrap">
-          {% for cat, msg in msgs %}<div class="flash {{cat}}">{{ msg }}</div>{% endfor %}
+        <div class="mb-6 space-y-4">
+          {% for cat, msg in msgs %}
+            <div class="glass-effect rounded-xl p-4 border-l-4 
+              {% if cat == 'ok' %}border-green-500 bg-green-500/10{% elif cat == 'error' %}border-red-500 bg-red-500/10{% else %}border-blue-500 bg-blue-500/10{% endif %}">
+              <div class="flex items-center">
+                <i class="{% if cat == 'ok' %}fas fa-check-circle text-green-400{% elif cat == 'error' %}fas fa-exclamation-triangle text-red-400{% else %}fas fa-info-circle text-blue-400{% endif %} mr-3"></i>
+                <span>{{ msg }}</span>
+              </div>
+            </div>
+          {% endfor %}
         </div>
       {% endif %}
     {% endwith %}
+
+    <!-- Page Content -->
     {% block content %}{% endblock %}
   </main>
+
+  <!-- Footer -->
+  <footer class="glass-effect border-t border-white/10 mt-16">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div class="grid md:grid-cols-3 gap-8">
+        <div>
+          <div class="flex items-center space-x-3 mb-4">
+            <div class="w-8 h-8 bg-gradient-to-r from-blue-glow to-purple-glow rounded-lg flex items-center justify-center">
+              <i class="fas fa-vote-yea text-white text-sm"></i>
+            </div>
+            <span class="text-lg font-bold">ClickVote</span>
+          </div>
+          <p class="text-gray-400 text-sm">Secure, transparent, and user-friendly voting system for all your election needs.</p>
+        </div>
+        <div>
+          <h3 class="font-semibold mb-4">Quick Links</h3>
+          <div class="space-y-2 text-sm">
+            <a href="#" class="block text-gray-400 hover:text-white transition-colors">How It Works</a>
+            <a href="#" class="block text-gray-400 hover:text-white transition-colors">Security Features</a>
+            <a href="#" class="block text-gray-400 hover:text-white transition-colors">Support</a>
+          </div>
+        </div>
+        <div>
+          <h3 class="font-semibold mb-4">Features</h3>
+          <div class="space-y-2 text-sm">
+            <div class="text-gray-400">✓ Real-time Results</div>
+            <div class="text-gray-400">✓ Mobile Friendly</div>
+            <div class="text-gray-400">✓ Secure & Fair</div>
+          </div>
+        </div>
+      </div>
+      <div class="border-t border-white/10 mt-8 pt-4 text-center text-sm text-gray-400">
+        © 2025 ClickVote. All rights reserved.
+      </div>
+    </div>
+  </footer>
+
+  <!-- Scripts -->
   <script>
+    // Mobile menu toggle
+    document.addEventListener('DOMContentLoaded', function() {
+      const menuBtn = document.getElementById('mobile-menu-btn');
+      const menu = document.getElementById('mobile-menu');
+      
+      if (menuBtn && menu) {
+        menuBtn.addEventListener('click', function() {
+          menu.classList.toggle('hidden');
+        });
+      }
+    });
+
+    // UTC time conversion
     (function(){
       function asLocal(s){
         var d = new Date(s);
@@ -64,33 +315,111 @@
     })();
   </script>
 
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-<script>
-document.addEventListener('DOMContentLoaded', () => {
-  try{
-    const raw = document.body.getAttribute('data-flashes') || '[]';
-    const flashes = JSON.parse(raw);
-    (flashes || []).forEach(([cat,msg]) => {
-      Swal.fire({icon: (cat==='ok')?'success': (cat==='error'?'error':'info'), title: msg, timer: 1800, showConfirmButton:false});
+  <!-- SweetAlert2 -->
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      try{
+        const raw = document.body.getAttribute('data-flashes') || '[]';
+        const flashes = JSON.parse(raw);
+        (flashes || []).forEach(([cat,msg]) => {
+          Swal.fire({
+            icon: (cat==='ok')?'success': (cat==='error'?'error':'info'), 
+            title: msg, 
+            timer: 1800, 
+            showConfirmButton: false,
+            background: '#1e293b',
+            color: '#ffffff'
+          });
+        });
+      }catch(e){ console.warn('flash parse failed', e); }
     });
-  }catch(e){ console.warn('flash parse failed', e); }
-});
-</script>
+  </script>
 
-<!-- Toast container -->
-<div class="position-fixed bottom-0 end-0 p-3" style="z-index:1080">
-  <div id="appToast" class="toast align-items-center text-bg-success border-0" role="alert" aria-live="assertive" aria-atomic="true">
-    <div class="d-flex">
-      <div class="toast-body" id="appToastBody"></div>
-      <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
-    </div>
-  </div>
-</div>
-<script>
-function showToast(msg){try{const el=document.getElementById('appToast');document.getElementById('appToastBody').innerText=msg||'Saved';const t=new bootstrap.Toast(el,{delay:2000});t.show();}catch(e){console.log(e);}}
-function togglePassword(inputId, btn){const i=document.getElementById(inputId); if(!i) return; i.type = (i.type==='password') ? 'text' : 'password'; if(btn) btn.innerText = (i.type==='password') ? 'Show' : 'Hide';}
-(function(){ try{ const sp=new URLSearchParams(location.search); const msg = sp.get('ok') || sp.get('msg'); if(msg) showToast(decodeURIComponent(msg)); }catch(e){} })();
-</script>
+  <!-- Utility Functions -->
+  <script>
+    function showToast(msg){
+      Swal.fire({
+        toast: true,
+        position: 'top-end',
+        icon: 'success',
+        title: msg || 'Success!',
+        showConfirmButton: false,
+        timer: 3000,
+        background: '#1e293b',
+        color: '#ffffff'
+      });
+    }
+    
+    function togglePassword(inputId, btn){
+      const i = document.getElementById(inputId); 
+      if(!i) return; 
+      i.type = (i.type==='password') ? 'text' : 'password'; 
+      if(btn) {
+        const icon = btn.querySelector('i');
+        if(icon) {
+          icon.className = i.type === 'password' ? 'fas fa-eye' : 'fas fa-eye-slash';
+        }
+      }
+    }
 
+    // Enhanced Dropdown Functionality
+    document.addEventListener('DOMContentLoaded', function() {
+      const dropdowns = document.querySelectorAll('.nav-dropdown');
+      
+      dropdowns.forEach(dropdown => {
+        const button = dropdown.querySelector('button');
+        const content = dropdown.querySelector('.dropdown-content');
+        let timeoutId = null;
+        
+        if (button && content) {
+          // Show dropdown on hover with slight delay
+          dropdown.addEventListener('mouseenter', () => {
+            clearTimeout(timeoutId);
+            content.style.display = 'block';
+            setTimeout(() => {
+              content.style.opacity = '1';
+              content.style.transform = 'translateY(0)';
+            }, 10);
+          });
+          
+          // Hide dropdown with delay to allow cursor movement
+          dropdown.addEventListener('mouseleave', () => {
+            timeoutId = setTimeout(() => {
+              content.style.opacity = '0';
+              content.style.transform = 'translateY(-10px)';
+              setTimeout(() => {
+                content.style.display = 'none';
+              }, 200);
+            }, 100); // 100ms delay before hiding
+          });
+          
+          // Keep dropdown visible when hovering over content
+          content.addEventListener('mouseenter', () => {
+            clearTimeout(timeoutId);
+          });
+          
+          content.addEventListener('mouseleave', () => {
+            timeoutId = setTimeout(() => {
+              content.style.opacity = '0';
+              content.style.transform = 'translateY(-10px)';
+              setTimeout(() => {
+                content.style.display = 'none';
+              }, 200);
+            }, 50);
+          });
+        }
+      });
+    });
+
+    // Show success message from URL params
+    (function(){ 
+      try{ 
+        const sp = new URLSearchParams(location.search); 
+        const msg = sp.get('ok') || sp.get('msg'); 
+        if(msg) showToast(decodeURIComponent(msg)); 
+      }catch(e){} 
+    })();
+  </script>
 </body>
 </html>

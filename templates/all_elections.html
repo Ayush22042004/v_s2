@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+{% block title %}All Elections - ClickVote{% endblock %}
+
+{% block content %}
+<div class="min-h-screen gradient-bg py-12">
+  <div class="container mx-auto px-4 max-w-6xl">
+    <!-- Header -->
+    <div class="text-center mb-12">
+      <h1 class="text-4xl font-bold text-white mb-4 animate-fade-in">
+        <i class="fas fa-vote-yea text-blue-400 mr-3"></i>
+        All Elections
+      </h1>
+      <p class="text-gray-300 text-lg animate-slide-up">
+        Complete archive of all elections - active, scheduled, and completed
+      </p>
+      
+      <!-- Statistics -->
+      <div class="flex justify-center mt-8 space-x-8">
+        <div class="text-center">
+          <div class="text-2xl font-bold text-blue-400">{{ active_elections|length }}</div>
+          <div class="text-gray-400 text-sm">Active</div>
+        </div>
+        <div class="text-center">
+          <div class="text-2xl font-bold text-yellow-400">{{ scheduled_elections|length }}</div>
+          <div class="text-gray-400 text-sm">Scheduled</div>
+        </div>
+        <div class="text-center">
+          <div class="text-2xl font-bold text-green-400">{{ completed_elections|length }}</div>
+          <div class="text-gray-400 text-sm">Completed</div>
+        </div>
+        <div class="text-center">
+          <div class="text-2xl font-bold text-white">{{ total_elections }}</div>
+          <div class="text-gray-400 text-sm">Total</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Navigation -->
+    <div class="flex justify-center mb-8">
+      <a href="{{ url_for('index') }}" 
+         class="inline-flex items-center px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded-lg text-white transition-colors">
+        <i class="fas fa-arrow-left mr-2"></i>
+        Back to Home
+      </a>
+    </div>
+
+    <!-- Elections Grid -->
+    {% if elections %}
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-slide-up">
+      {% for election in elections %}
+      <div class="glass-effect rounded-xl p-6 border border-white/10 hover:border-blue-500/30 transition-all duration-300 hover:transform hover:scale-105">
+        <!-- Header -->
+        <div class="flex items-center justify-between mb-4">
+          <div>
+            <h3 class="text-lg font-semibold text-white mb-1">{{ election.title or election.category }}</h3>
+            <p class="text-gray-400 text-sm">{{ election.category }} • {{ election.year or "TBD" }}</p>
+          </div>
+          
+          <!-- Status Badge -->
+          <div class="text-right">
+            {% if election.status == 'active' %}
+            <span class="inline-flex items-center px-3 py-1 bg-green-500/20 rounded-full text-green-400 text-sm font-medium border border-green-500/30">
+              <i class="fas fa-circle text-xs mr-2 animate-pulse"></i>
+              Active
+            </span>
+            {% elif election.status == 'scheduled' %}
+            <span class="inline-flex items-center px-3 py-1 bg-blue-500/20 rounded-full text-blue-400 text-sm font-medium border border-blue-500/30">
+              <i class="fas fa-calendar text-xs mr-2"></i>
+              Scheduled
+            </span>
+            {% elif election.status == 'cancelled' %}
+            <span class="inline-flex items-center px-3 py-1 bg-red-500/20 rounded-full text-red-400 text-sm font-medium border border-red-500/30">
+              <i class="fas fa-ban text-xs mr-2"></i>
+              Cancelled
+            </span>
+            {% else %}
+            <span class="inline-flex items-center px-3 py-1 bg-purple-500/20 rounded-full text-purple-400 text-sm font-medium border border-purple-500/30">
+              <i class="fas fa-check-circle text-xs mr-2"></i>
+              Completed
+            </span>
+            {% endif %}
+          </div>
+        </div>
+
+        <!-- Timing -->
+        <div class="mb-4 text-sm text-gray-400">
+          <div class="flex items-center mb-2">
+            <i class="fas fa-calendar-alt mr-2"></i>
+            <span class="utc-time">{{ election.start_time|istfmt }}</span>
+          </div>
+          <div class="flex items-center">
+            <i class="fas fa-calendar-check mr-2"></i>
+            <span class="utc-time">{{ election.end_time|istfmt }}</span>
+          </div>
+        </div>
+
+        <!-- Stats -->
+        <div class="flex items-center justify-between text-sm mb-4">
+          <div class="flex items-center space-x-4">
+            <span class="flex items-center text-blue-400">
+              <i class="fas fa-users mr-1"></i>
+              {{ election.candidate_count }} candidates
+            </span>
+            <span class="flex items-center text-green-400">
+              <i class="fas fa-poll mr-1"></i>
+              {{ election.vote_count }} votes
+            </span>
+          </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="flex items-center space-x-2">
+          {% if user %}
+            {% if user.role == 'voter' and election.status == 'active' %}
+            <a href="{{ url_for('voter_panel') }}" class="flex-1 px-3 py-2 bg-green-600 hover:bg-green-700 rounded-lg text-white text-center transition-colors text-sm">
+              <i class="fas fa-vote-yea mr-1"></i>
+              Vote Now
+            </a>
+            {% endif %}
+          {% endif %}
+          
+          <a href="{{ url_for('results', election_id=election.id) }}" class="flex-1 px-3 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-white text-center transition-colors text-sm">
+            <i class="fas fa-chart-bar mr-1"></i>
+            View Results
+          </a>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="text-center py-12">
+      <div class="glass-effect rounded-xl p-8 max-w-md mx-auto">
+        <i class="fas fa-inbox text-4xl text-gray-400 mb-4"></i>
+        <h3 class="text-xl font-semibold text-white mb-2">No Elections Found</h3>
+        <p class="text-gray-400">There are currently no elections in the system.</p>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- JavaScript for time formatting -->
+<script>
+// Convert UTC times to local timezone
+document.addEventListener('DOMContentLoaded', function() {
+    const utcElements = document.querySelectorAll('.utc-time');
+    utcElements.forEach(function(element) {
+        const utcTime = element.textContent;
+        if (utcTime && utcTime !== 'None' && utcTime.trim() !== '') {
+            try {
+                const date = new Date(utcTime);
+                const options = {
+                    year: 'numeric',
+                    month: 'short',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    timeZoneName: 'short'
+                };
+                element.textContent = date.toLocaleString('en-US', options);
+            } catch (e) {
+                console.log('Error formatting date:', utcTime);
+            }
+        }
+    });
+});
+</script>
+{% endblock %}
