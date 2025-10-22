@@ -386,14 +386,21 @@ def debug_role():
 @app.route("/")
 def index():
     user = query("SELECT * FROM users WHERE id=?", (session["user_id"],), one=True) if "user_id" in session else None
-    active = query("SELECT * FROM elections WHERE status != 'cancelled' OR status IS NULL ORDER BY start_time DESC LIMIT 5")
-    return render_template("index.html", user=user, elections=active)
+    # Show recent elections from all categories (let classify_elections handle the filtering)
+    all_elections = query("SELECT * FROM elections ORDER BY start_time DESC LIMIT 10")
+    ongoing, scheduled, ended = classify_elections(all_elections)
+    # Show mix of recent elections: ongoing + scheduled + recent ended
+    recent_elections = ongoing + scheduled + ended[:3]  # Show up to 3 recent ended elections
+    return render_template("index.html", user=user, elections=recent_elections[:5])
 
 @app.route("/all_elections")
 def all_elections():
     """Public page showing all elections"""
-    elections = query("SELECT * FROM elections WHERE status != 'cancelled' OR status IS NULL ORDER BY start_time DESC")
-    return render_template("all_elections.html", elections=elections)
+    elections = query("SELECT * FROM elections ORDER BY start_time DESC")
+    ongoing, scheduled, ended = classify_elections(elections)
+    # Show all non-cancelled elections
+    all_elections = ongoing + scheduled + ended
+    return render_template("all_elections.html", elections=all_elections)
 
 @app.route("/signup", methods=["GET","POST"])
 def signup():
@@ -750,10 +757,10 @@ def export_excel():
     if session.get('user_id') is None or session.get('role') != 'admin':
         return redirect(url_for('login'))
     try:
-        rows = exec_sql("SELECT * FROM elections WHERE status != 'cancelled' OR status IS NULL ORDER BY start_time DESC", fetch=True)
+        rows = exec_sql("SELECT * FROM elections ORDER BY start_time DESC", fetch=True)
     except Exception:
         pass
-        rows = query("SELECT * FROM elections WHERE status != 'cancelled' OR status IS NULL ORDER BY start_time DESC")
+        rows = query("SELECT * FROM elections ORDER BY start_time DESC")
     now = datetime.now(timezone.utc)
     ongoing, scheduled, ended = [], [], []
     for e in rows:
