@@ -1,5 +1,6 @@
 import os
 import sqlite3
+import secrets
 from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify
 from functools import wraps
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -60,8 +61,7 @@ def safe_localize(naive_dt, tz):
         return tz.localize(naive_dt)
     return naive_dt.replace(tzinfo=tz)
 
-# Global variable to store last scheduled election debug data (admin-only, short-lived)
-LAST_SCHEDULE_DEBUG = {}
+# Removed unused debug variable
 
 # If running in an environment with DATABASE_URL (e.g. Render), prefer PostgreSQL helpers
 DB_ADAPTER = os.environ.get("DATABASE_URL")
@@ -141,14 +141,13 @@ def execute(sql, args=()):
 # Flask app init
 app = Flask(__name__)
 # Generate a secure random key if no SECRET_KEY is set
-import secrets
 app.secret_key = os.environ.get('SECRET_KEY', secrets.token_hex(32))
 
 # Enable CSRF protection
 try:
     if CSRFProtect:
         csrf = CSRFProtect(app)
-except:
+except ImportError:
     # Flask-WTF not installed, skip CSRF for now
     csrf = None
     print("⚠️ Flask-WTF not installed - CSRF protection disabled")
@@ -251,6 +250,16 @@ def init_database():
                 FOREIGN KEY (user_id) REFERENCES users (id)
             )
         ''')
+        
+        # Create performance indexes for common queries
+        db.execute('CREATE INDEX IF NOT EXISTS idx_elections_status ON elections(status)')
+        db.execute('CREATE INDEX IF NOT EXISTS idx_elections_start_time ON elections(start_time)')
+        db.execute('CREATE INDEX IF NOT EXISTS idx_candidates_election ON candidates(election_id)')
+        db.execute('CREATE INDEX IF NOT EXISTS idx_votes_election ON votes(election_id)')
+        db.execute('CREATE INDEX IF NOT EXISTS idx_votes_user_election ON votes(user_id, election_id)')
+        db.execute('CREATE INDEX IF NOT EXISTS idx_applications_election ON candidate_applications(election_id)')
+        db.execute('CREATE INDEX IF NOT EXISTS idx_applications_status ON candidate_applications(status)')
+        db.execute('CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id)')
         
         # Create default admin user if it doesn't exist
         admin_exists = db.execute('SELECT COUNT(*) FROM users WHERE username = ?', ('admin',)).fetchone()[0]
@@ -573,7 +582,7 @@ def logout():
 def admin():
     rows = query("SELECT * FROM elections ORDER BY start_time DESC")
     ongoing, scheduled, ended = classify_elections(rows)
-    return render_template("admin.html", ongoing=ongoing, scheduled=scheduled, ended=ended, elections=rows, last_schedule_debug=LAST_SCHEDULE_DEBUG)
+    return render_template("admin.html", ongoing=ongoing, scheduled=scheduled, ended=ended, elections=rows)
 
 @app.route("/admin/past-elections")
 @login_required(role="admin")
@@ -815,8 +824,7 @@ def cancel_election(election_id):
             return jsonify({'success': False, 'message': 'Election is already cancelled'}), 400
             
         # Update election status to cancelled and set end time to now
-        from datetime import datetime
-        current_time = datetime.now()
+        current_time = datetime.now(timezone.utc)
         
         exec_sql('''UPDATE elections 
                    SET status = 'cancelled', 
@@ -874,9 +882,13 @@ def schedule():
             
             # Convert candidate limit to integer if provided
             if limit:
-                limit = int(limit)
-                if limit < 2:
-                    flash("Candidate limit must be at least 2.", "error")
+                try:
+                    limit = int(limit)
+                    if limit < 2:
+                        flash("Candidate limit must be at least 2.", "error")
+                        return render_template('schedule.html', error="Invalid candidate limit")
+                except ValueError:
+                    flash("Candidate limit must be a valid number.", "error")
                     return render_template('schedule.html', error="Invalid candidate limit")
             
             # Insert election without year column (not in schema)
