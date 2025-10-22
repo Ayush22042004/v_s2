@@ -782,21 +782,24 @@ def vote():
     db = get_db()
     try:
         # Check for existing vote within transaction
-        if query("SELECT 1 FROM votes WHERE voter_id=? AND election_id=?", (session["user_id"], election_id), one=True):
+        if query("SELECT 1 FROM votes WHERE user_id=? AND election_id=?", (session["user_id"], election_id), one=True):
             flash("You have already voted in this election.", "warn"); return redirect(url_for("voter_panel"))
         c = query("SELECT * FROM candidates WHERE id=? AND election_id=?", (candidate_id, election_id), one=True)
         if not c: flash("Invalid candidate selection.", "error"); return redirect(url_for("voter_panel"))
         
         # Insert vote with unique constraint protection
         try:
-            execute("INSERT INTO votes (voter_id,candidate_id,election_id,timestamp) VALUES (?,?,?,?)",
+            execute("INSERT INTO votes (user_id,candidate_id,election_id,voted_at) VALUES (?,?,?,?)",
                     (session["user_id"], candidate_id, election_id, now.isoformat()))
         except Exception as e:
             # Catch unique constraint violation (double vote attempt)
             if "UNIQUE constraint failed" in str(e) or "duplicate" in str(e).lower():
                 flash("You have already voted in this election.", "warn"); return redirect(url_for("voter_panel"))
+            print(f"❌ Vote INSERT error: {str(e)}")
             raise e
     except Exception as e:
+        print(f"❌ Vote recording error: {str(e)}")
+        print(f"❌ Error type: {type(e).__name__}")
         db.rollback()
         flash("Error recording vote. Please try again.", "error"); return redirect(url_for("voter_panel"))
     flash("Vote recorded. Thank you!", "ok"); return redirect(url_for("voter_panel"))
