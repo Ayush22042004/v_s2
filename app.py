@@ -185,10 +185,32 @@ def init_database():
                 status TEXT DEFAULT 'active',
                 cancelled_at TEXT,
                 cancelled_by INTEGER,
+                paused_at TEXT,
+                paused_by INTEGER,
+                resumed_at TEXT,
+                resumed_by INTEGER,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 FOREIGN KEY (created_by) REFERENCES users (id)
             )
         ''')
+        
+        # Add new columns for pause/resume functionality if they don't exist
+        try:
+            db.execute('ALTER TABLE elections ADD COLUMN paused_at TEXT')
+        except:
+            pass
+        try:
+            db.execute('ALTER TABLE elections ADD COLUMN paused_by INTEGER')
+        except:
+            pass
+        try:
+            db.execute('ALTER TABLE elections ADD COLUMN resumed_at TEXT')
+        except:
+            pass
+        try:
+            db.execute('ALTER TABLE elections ADD COLUMN resumed_by INTEGER')
+        except:
+            pass
         
         # Create candidates table
         db.execute('''
@@ -288,8 +310,8 @@ import time
 class SimpleRateLimiter:
     def __init__(self):
         self.requests = defaultdict(deque)
-    
-    def is_allowed(self, key, limit=5, window=300):  # 5 requests per 5 minutes
+
+    def is_allowed(self, key, limit=10, window=300):  # 10 requests per 5 minutes
         now = time.time()
         # Clean old requests
         while self.requests[key] and self.requests[key][0] < now - window:
@@ -444,7 +466,7 @@ def login():
     if request.method == "POST":
         # Rate limit login attempts by IP
         client_ip = request.environ.get('HTTP_X_FORWARDED_FOR', request.remote_addr)
-        if not rate_limiter.is_allowed(f"login_{client_ip}", limit=5, window=300):
+        if not rate_limiter.is_allowed(f"login_{client_ip}", limit=10, window=300):
             flash("Too many login attempts. Please try again in 5 minutes.", "error")
             return redirect(url_for("login"))
         
@@ -715,7 +737,7 @@ def to_ist(dt):
 @login_required(role="voter")
 def vote():
     # Rate limit voting attempts
-    if not rate_limiter.is_allowed(f"vote_{session['user_id']}", limit=3, window=60):
+    if not rate_limiter.is_allowed(f"vote_{session['user_id']}", limit=5, window=60):
         flash("Please wait before voting again.", "warn")
         return redirect(url_for("voter_panel"))
     
@@ -726,6 +748,13 @@ def vote():
         flash("Invalid vote submission.", "error"); return redirect(url_for("voter_panel"))
     e = query("SELECT * FROM elections WHERE id=?", (election_id,), one=True)
     if not e: flash("No election is scheduled right now.", "warn"); return redirect(url_for("voter_panel"))
+    
+    # Check if election is paused or cancelled
+    if e.get("status") == "paused":
+        flash("This election is currently paused. Please wait for the admin to resume voting.", "warn"); return redirect(url_for("voter_panel"))
+    if e.get("status") == "cancelled":
+        flash("This election has been cancelled.", "warn"); return redirect(url_for("voter_panel"))
+    
     now = now_utc(); s = parse_iso(e["start_time"]); t = parse_iso(e["end_time"])
     if not s or not t or not (s <= now <= t):
         flash("This election is not active.", "warn"); return redirect(url_for("voter_panel"))
@@ -841,14 +870,23 @@ def admin_voters():
 @app.route('/admin/election/<int:election_id>')
 @login_required(role="admin")
 def election_dashboard(election_id):
-    # login_required decorator already enforces admin access
-    try:
-        e = exec_sql('SELECT * FROM elections WHERE id=?', (election_id,), fetch=True, one=True)
-        cand = exec_sql('SELECT name, votes FROM candidates WHERE election_id=? ORDER BY votes DESC, name', (election_id,), fetch=True)
-    except Exception:
-        e = query('SELECT * FROM elections WHERE id=?', (election_id,))
-        cand = query('SELECT name, votes FROM candidates WHERE election_id=? ORDER BY votes DESC, name', (election_id,))
-    total = sum([c['votes'] if 'votes' in c else 0 for c in cand]) if cand else 0
+    # Get election details
+    e = query('SELECT * FROM elections WHERE id=?', (election_id,), one=True)
+    if not e:
+        flash("Election not found.", "error")
+        return redirect(url_for("admin"))
+    
+    # Get candidates with vote counts
+    cand = query("""
+        SELECT c.id, c.name, c.category, c.photo, COUNT(v.id) as votes
+        FROM candidates c
+        LEFT JOIN votes v ON v.candidate_id = c.id
+        WHERE c.election_id = ?
+        GROUP BY c.id, c.name, c.category, c.photo
+        ORDER BY votes DESC, c.name ASC
+    """, (election_id,))
+    
+    total = sum([c['votes'] if c['votes'] else 0 for c in cand]) if cand else 0
     return render_template('election_dashboard.html', e=e, cand=cand, total=total)
 
 
@@ -892,6 +930,90 @@ def cancel_election(election_id):
         
     except Exception as e:
         print(f"Error cancelling election {election_id}: {e}")
+        return jsonify({'success': False, 'message': f'Database error: {str(e)}'}), 500
+
+
+@app.route('/admin/pause_election/<int:election_id>', methods=['POST'])
+@login_required(role="admin")
+def pause_election(election_id):
+    """Pause an election with admin authentication"""
+    try:
+        # Verify election exists and is not already ended/cancelled
+        election = exec_sql('SELECT * FROM elections WHERE id=?', (election_id,), fetch=True, one=True)
+        if not election:
+            return jsonify({'success': False, 'message': 'Election not found'}), 404
+        
+        # Check if election can be paused
+        if election['status'] in ['cancelled', 'paused']:
+            return jsonify({'success': False, 'message': f'Election is already {election["status"]}'}), 400
+            
+        # Update election status to paused
+        current_time = datetime.now(timezone.utc)
+        
+        exec_sql('''UPDATE elections 
+                   SET status = 'paused', 
+                       paused_at = ?,
+                       paused_by = ?
+                   WHERE id = ?''', 
+                (current_time, session.get('user_id'), election_id))
+        
+        # Log the pause for audit trail
+        election_title = election['title'] if election['title'] else (election['category'] if election['category'] else f'Election {election_id}')
+        admin_name = session.get('user', {}).get('name', 'Unknown Admin')
+        
+        print(f"ELECTION PAUSED: {election_title} (ID: {election_id}) by Admin: {admin_name} at {current_time}")
+        
+        return jsonify({
+            'success': True, 
+            'message': f'Election "{election_title}" has been successfully paused',
+            'election_id': election_id,
+            'paused_at': current_time.isoformat()
+        })
+        
+    except Exception as e:
+        print(f"Error pausing election {election_id}: {e}")
+        return jsonify({'success': False, 'message': f'Database error: {str(e)}'}), 500
+
+
+@app.route('/admin/resume_election/<int:election_id>', methods=['POST'])
+@login_required(role="admin")
+def resume_election(election_id):
+    """Resume a paused election with admin authentication"""
+    try:
+        # Verify election exists and is paused
+        election = exec_sql('SELECT * FROM elections WHERE id=?', (election_id,), fetch=True, one=True)
+        if not election:
+            return jsonify({'success': False, 'message': 'Election not found'}), 404
+        
+        # Check if election is paused
+        if election['status'] != 'paused':
+            return jsonify({'success': False, 'message': 'Election is not paused - cannot resume'}), 400
+            
+        # Update election status to active (remove paused status)
+        current_time = datetime.now(timezone.utc)
+        
+        exec_sql('''UPDATE elections 
+                   SET status = NULL, 
+                       resumed_at = ?,
+                       resumed_by = ?
+                   WHERE id = ?''', 
+                (current_time, session.get('user_id'), election_id))
+        
+        # Log the resumption for audit trail
+        election_title = election['title'] if election['title'] else (election['category'] if election['category'] else f'Election {election_id}')
+        admin_name = session.get('user', {}).get('name', 'Unknown Admin')
+        
+        print(f"ELECTION RESUMED: {election_title} (ID: {election_id}) by Admin: {admin_name} at {current_time}")
+        
+        return jsonify({
+            'success': True, 
+            'message': f'Election "{election_title}" has been successfully resumed',
+            'election_id': election_id,
+            'resumed_at': current_time.isoformat()
+        })
+        
+    except Exception as e:
+        print(f"Error resuming election {election_id}: {e}")
         return jsonify({'success': False, 'message': f'Database error: {str(e)}'}), 500
 
 

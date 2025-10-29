@@ -91,14 +91,22 @@
         {% if ongoing %}
         <div class="grid lg:grid-cols-2 gap-6">
           {% for e in ongoing %}
-          <div class="glass-effect rounded-3xl p-8 border border-green-500/30 bg-gradient-to-br from-green-500/10 to-emerald-500/5 hover:border-green-400/50 transition-all duration-500 transform hover:scale-[1.02] relative overflow-hidden">
+          {% set is_paused = e.status == 'paused' %}
+          <div class="glass-effect rounded-3xl p-8 border {% if is_paused %}border-red-500/30 bg-gradient-to-br from-red-500/10 to-red-600/5 hover:border-red-400/50{% else %}border-green-500/30 bg-gradient-to-br from-green-500/10 to-emerald-500/5 hover:border-green-400/50{% endif %} transition-all duration-500 transform hover:scale-[1.02] relative overflow-hidden">
             
-            <!-- Live Indicator -->
+            <!-- Status Indicator -->
             <div class="absolute top-4 right-4">
+              {% if is_paused %}
+              <div class="flex items-center space-x-2 px-3 py-1 bg-red-500/20 rounded-full border border-red-500/30">
+                <div class="w-2 h-2 bg-red-400 rounded-full"></div>
+                <span class="text-red-400 text-xs font-medium">PAUSED</span>
+              </div>
+              {% else %}
               <div class="flex items-center space-x-2 px-3 py-1 bg-green-500/20 rounded-full border border-green-500/30">
                 <div class="w-2 h-2 bg-green-400 rounded-full animate-ping"></div>
                 <span class="text-green-400 text-xs font-medium">LIVE</span>
               </div>
+              {% endif %}
             </div>
             
             <div class="mb-6">
@@ -154,6 +162,17 @@
               </div>
               
               <!-- Voting Form -->
+              {% if is_paused %}
+              <div class="space-y-4">
+                <div class="text-center py-6">
+                  <div class="w-16 h-16 bg-red-500/20 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                    <i class="fas fa-pause text-red-400 text-2xl"></i>
+                  </div>
+                  <p class="text-red-400 font-medium mb-2">Election Paused</p>
+                  <p class="text-gray-400 text-sm">Voting is temporarily suspended. Please wait for the admin to resume this election.</p>
+                </div>
+              </div>
+              {% else %}
               <form method="post" action="{{ url_for('vote') }}" class="space-y-4" onsubmit="return confirmVote(this, '{{ e.title or e.category }}')">
                 <input type="hidden" name="election_id" value="{{ e.id }}">
                 
@@ -199,6 +218,7 @@
                   Cast Your Vote
                 </button>
               </form>
+              {% endif %}
             </div>
             {% else %}
             <div class="text-center py-8">

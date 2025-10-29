@@ -242,11 +242,22 @@
         
         <div>
           <label class="block text-sm font-medium text-gray-300 mb-1">Category</label>
-          <input 
+          <select 
             name="category" 
-            placeholder="e.g., President, Secretary"
-            class="w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg focus:border-purple-500/50 focus:outline-none transition-all duration-300 text-white text-sm placeholder-gray-400"
+            required
+            class="w-full px-3 py-2 bg-gray-800 border border-white/10 rounded-lg focus:border-purple-500/50 focus:outline-none transition-all duration-300 text-white text-sm"
+            style="background-color: #1f2937 !important;"
           >
+            <option value="" style="background-color: #1f2937; color: #9ca3af;">Select Category</option>
+            <option value="Technical" style="background-color: #1f2937; color: white;">Technical Department</option>
+            <option value="Publicity" style="background-color: #1f2937; color: white;">Publicity Department</option>
+            <option value="Creatives" style="background-color: #1f2937; color: white;">Creatives Department</option>
+            <option value="Coverage" style="background-color: #1f2937; color: white;">Coverage (Media) Department</option>
+            <option value="General" style="background-color: #1f2937; color: white;">General Department</option>
+            <option value="Executive" style="background-color: #1f2937; color: white;">Executive Positions</option>
+            <option value="Class Representative" style="background-color: #1f2937; color: white;">Class Representative</option>
+            <option value="Other" style="background-color: #1f2937; color: white;">Other</option>
+          </select>
         </div>
         
         <div>

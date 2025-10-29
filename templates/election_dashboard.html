@@ -15,6 +15,12 @@
             <i class="fas fa-calendar"></i>
             <span class="utc-time">{{ e.start_time }}</span> → <span class="utc-time">{{ e.end_time }}</span>
           </p>
+          <!-- Debug: Show election status -->
+          <p class="text-sm text-yellow-400">
+            Status: {{ e.status or 'active' }} 
+            {% if e.paused_at %} | Paused: {{ e.paused_at }}{% endif %}
+            {% if e.resumed_at %} | Resumed: {{ e.resumed_at }}{% endif %}
+          </p>
         </div>
         <div class="flex items-center space-x-4">
           <div class="text-right">
@@ -204,6 +210,23 @@
       <i class="fas fa-download mr-2"></i>Export Results
     </button>
     
+    <!-- Pause/Resume/Cancel Election Actions -->
+    {% if e.status != 'cancelled' %}
+      {% if e.status == 'paused' %}
+        <button onclick="resumeElection({{ e.id }})" class="px-6 py-3 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 rounded-xl font-medium transition-all duration-300 transform hover:scale-105">
+          <i class="fas fa-play mr-2"></i>Resume Election
+        </button>
+      {% else %}
+        <button onclick="pauseElection({{ e.id }})" class="px-6 py-3 bg-gradient-to-r from-yellow-600 to-orange-600 hover:from-yellow-700 hover:to-orange-700 rounded-xl font-medium transition-all duration-300 transform hover:scale-105">
+          <i class="fas fa-pause mr-2"></i>Pause Election
+        </button>
+      {% endif %}
+      
+      <button onclick="cancelElection({{ e.id }})" class="px-6 py-3 bg-gradient-to-r from-red-600 to-pink-600 hover:from-red-700 hover:to-pink-700 rounded-xl font-medium transition-all duration-300 transform hover:scale-105">
+        <i class="fas fa-stop mr-2"></i>Cancel Election
+      </button>
+    {% endif %}
+    
     <button onclick="refreshChart()" class="px-6 py-3 border border-white/20 hover:bg-white/10 rounded-xl font-medium transition-all duration-300 transform hover:scale-105">
       <i class="fas fa-sync-alt mr-2"></i>Refresh Data
     </button>
@@ -297,6 +320,125 @@ function exportResults() {
   setTimeout(() => {
     window.open('{{ url_for("export_excel") }}', '_blank');
   }, 1000);
+}
+
+function pauseElection(electionId) {
+  if (!confirm('Are you sure you want to pause this election? Voting will be suspended until resumed.')) {
+    return;
+  }
+  
+  fetch(`/admin/pause_election/${electionId}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    }
+  })
+  .then(response => response.json())
+  .then(data => {
+    if (data.success) {
+      showToast('Election paused successfully', 'success');
+      setTimeout(() => location.reload(), 1500);
+    } else {
+      showToast(data.message || 'Failed to pause election', 'error');
+    }
+  })
+  .catch(error => {
+    console.error('Error:', error);
+    showToast('Failed to pause election', 'error');
+  });
+}
+
+function resumeElection(electionId) {
+  if (!confirm('Are you sure you want to resume this election? Voting will be reactivated.')) {
+    return;
+  }
+  
+  fetch(`/admin/resume_election/${electionId}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    }
+  })
+  .then(response => response.json())
+  .then(data => {
+    if (data.success) {
+      showToast('Election resumed successfully', 'success');
+      setTimeout(() => location.reload(), 1500);
+    } else {
+      showToast(data.message || 'Failed to resume election', 'error');
+    }
+  })
+  .catch(error => {
+    console.error('Error:', error);
+    showToast('Failed to resume election', 'error');
+  });
+}
+
+function cancelElection(electionId) {
+  if (!confirm('Are you sure you want to cancel this election? This action cannot be undone!')) {
+    return;
+  }
+  
+  fetch(`/admin/cancel_election/${electionId}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    }
+  })
+  .then(response => response.json())
+  .then(data => {
+    if (data.success) {
+      showToast('Election cancelled successfully', 'success');
+      setTimeout(() => window.location.href = '/admin', 2000);
+    } else {
+      showToast(data.message || 'Failed to cancel election', 'error');
+    }
+  })
+  .catch(error => {
+    console.error('Error:', error);
+    showToast('Failed to cancel election', 'error');
+  });
+}
+
+// Toast notification function
+function showToast(message, type = 'info') {
+  const toast = document.createElement('div');
+  toast.className = `fixed top-4 right-4 z-50 px-6 py-4 rounded-xl shadow-2xl transform translate-x-full transition-all duration-300 max-w-sm`;
+  
+  const colors = {
+    success: 'bg-green-500/90 border-green-400/50 text-white',
+    error: 'bg-red-500/90 border-red-400/50 text-white',
+    warning: 'bg-yellow-500/90 border-yellow-400/50 text-white',
+    info: 'bg-blue-500/90 border-blue-400/50 text-white'
+  };
+  
+  toast.className += ` ${colors[type] || colors.info} border`;
+  
+  toast.innerHTML = `
+    <div class="flex items-center space-x-3">
+      <div class="flex-shrink-0">
+        <i class="fas ${type === 'success' ? 'fa-check-circle' : type === 'error' ? 'fa-exclamation-circle' : type === 'warning' ? 'fa-exclamation-triangle' : 'fa-info-circle'}"></i>
+      </div>
+      <div class="flex-1">${message}</div>
+    </div>
+  `;
+  
+  document.body.appendChild(toast);
+  
+  // Show toast
+  setTimeout(() => {
+    toast.classList.remove('translate-x-full');
+  }, 100);
+  
+  // Hide toast after 3 seconds
+  setTimeout(() => {
+    toast.classList.add('translate-x-full');
+    setTimeout(() => {
+      if (document.body.contains(toast)) {
+        document.body.removeChild(toast);
+      }
+    }, 300);
+  }, 3000);
 }
 
 // Auto-refresh every 30 seconds
