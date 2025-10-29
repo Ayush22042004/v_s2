@@ -572,6 +572,137 @@ def candidate_profile():
     return render_template('candidate_profile.html', apps=apps, approved=approved)
 
 
+@app.route('/profile')
+@login_required()
+def user_profile():
+    user_id = session.get('user_id')
+    role = session.get('role')
+    
+    # Get user information
+    user = query('SELECT * FROM users WHERE id=?', (user_id,), one=True)
+    if not user:
+        flash('User not found.', 'error')
+        return redirect(url_for('index'))
+    
+    # Mark notifications as read
+    try:
+        execute('UPDATE notifications SET read=1 WHERE user_id=?', (user_id,))
+    except Exception:
+        pass
+    
+    # Calculate stats
+    total_votes = query('SELECT COUNT(*) as count FROM votes WHERE user_id=?', (user_id,), one=True)['count']
+    total_applications = query('SELECT COUNT(*) as count FROM candidate_applications WHERE user_id=?', (user_id,), one=True)['count']
+    approved_candidacies = query('SELECT COUNT(*) as count FROM candidates WHERE user_id=?', (user_id,), one=True)['count']
+    
+    # Calculate account age in days
+    account_age_days = 0
+    if user['created_at']:
+        try:
+            from datetime import datetime
+            created_date = datetime.fromisoformat(user['created_at'].replace('Z', '+00:00'))
+            account_age_days = (datetime.now().replace(tzinfo=created_date.tzinfo) - created_date).days
+        except:
+            account_age_days = 0
+    
+    # Get role-specific data
+    profile_data = {
+        'user': user,
+        'role': role,
+        'stats': {
+            'total_votes': total_votes,
+            'total_applications': total_applications,
+            'approved_candidacies': approved_candidacies,
+            'account_age_days': account_age_days
+        },
+        'voting_history': query('SELECT v.*, e.title AS election_title, e.status, c.name AS candidate_name FROM votes v LEFT JOIN elections e ON e.id=v.election_id LEFT JOIN candidates c ON c.id=v.candidate_id WHERE v.user_id=? ORDER BY v.voted_at DESC', (user_id,)),
+        'candidate_apps': query('SELECT a.*, e.title AS election_title FROM candidate_applications a LEFT JOIN elections e ON e.id=a.election_id WHERE a.user_id=? ORDER BY a.applied_at DESC', (user_id,)),
+        'approved_candidacies': query('SELECT c.*, e.title AS election_title, e.status AS election_status FROM candidates c LEFT JOIN elections e ON e.id=c.election_id WHERE c.user_id=?', (user_id,))
+    }
+    
+    return render_template('profile.html', **profile_data)
+
+
+@app.route('/update_profile', methods=['POST'])
+@login_required()
+def update_profile():
+    user_id = session.get('user_id')
+    
+    try:
+        name = request.form.get('name', '').strip()
+        email = request.form.get('email', '').strip() or None
+        id_number = request.form.get('id_number', '').strip() or None
+        
+        # Validate email format if provided
+        if email and '@' not in email:
+            flash('Invalid email format', 'error')
+            return redirect(url_for('user_profile'))
+        
+        execute('UPDATE users SET name=?, email=?, id_number=? WHERE id=?', 
+                (name, email.lower() if email else None, id_number, user_id))
+        
+        flash('Profile updated successfully', 'ok')
+        return redirect(url_for('user_profile'))
+    except Exception as e:
+        flash(f'Error updating profile: {str(e)}', 'error')
+        return redirect(url_for('user_profile'))
+
+
+@app.route('/change_password', methods=['POST'])
+@login_required()
+def change_password():
+    user_id = session.get('user_id')
+    
+    try:
+        current_password = request.form.get('current_password', '').strip()
+        new_password = request.form.get('new_password', '').strip()
+        confirm_password = request.form.get('confirm_password', '').strip()
+        
+        # Get current user
+        user = query('SELECT * FROM users WHERE id=?', (user_id,), one=True)
+        if not user or not check_password_hash(user['password'], current_password):
+            flash('Current password is incorrect', 'error')
+            return redirect(url_for('user_profile'))
+        
+        # Validate new password
+        if len(new_password) < 6:
+            flash('Password must be at least 6 characters long', 'error')
+            return redirect(url_for('user_profile'))
+        
+        if new_password != confirm_password:
+            flash('New passwords do not match', 'error')
+            return redirect(url_for('user_profile'))
+        
+        hashed_password = generate_password_hash(new_password)
+        execute('UPDATE users SET password=? WHERE id=?', (hashed_password, user_id))
+        
+        flash('Password changed successfully', 'ok')
+        return redirect(url_for('user_profile'))
+    except Exception as e:
+        flash(f'Error changing password: {str(e)}', 'error')
+        return redirect(url_for('user_profile'))
+
+
+@app.route('/profile/change-password', methods=['POST'])
+@login_required()
+def change_password_ajax():
+    user_id = session.get('user_id')
+    data = request.get_json()
+    
+    try:
+        new_password = data.get('new_password', '').strip()
+        
+        if len(new_password) < 6:
+            return jsonify({'success': False, 'message': 'Password must be at least 6 characters long'})
+        
+        hashed_password = generate_password_hash(new_password)
+        execute('UPDATE users SET password=? WHERE id=?', (hashed_password, user_id))
+        
+        return jsonify({'success': True, 'message': 'Password changed successfully'})
+    except Exception as e:
+        return jsonify({'success': False, 'message': str(e)})
+
+
 @app.route('/admin/candidate_applications')
 @login_required(role='admin')
 def admin_candidate_applications():

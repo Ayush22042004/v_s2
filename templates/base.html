@@ -168,7 +168,7 @@
                 <i class="fas fa-chevron-down text-sm"></i>
               </button>
               <div class="dropdown-content hidden absolute top-full right-0 mt-2 w-48 glass-effect rounded-xl shadow-xl">
-                <a href="{{ url_for('candidate_profile') }}" class="block px-4 py-3 hover:bg-white/10 rounded-t-xl transition-colors">
+                <a href="{{ url_for('user_profile') }}" class="block px-4 py-3 hover:bg-white/10 rounded-t-xl transition-colors">
                   <i class="fas fa-user-circle mr-2"></i>Profile
                   {% if unread_notifications and unread_notifications > 0 %}
                     <span class="float-right bg-red-500 text-xs rounded-full px-2 py-1">{{ unread_notifications }}</span>
