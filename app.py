@@ -428,9 +428,16 @@ def signup():
                 (name, email.lower() if email else None, username, generate_password_hash(password), "voter", id_number))
         flash("Account created. Please login.", "ok"); return redirect(url_for("login"))
     
-    # Pass elections data for candidate signup option
-    elections = query("SELECT * FROM elections WHERE status != 'cancelled' OR status IS NULL ORDER BY start_time DESC")
-    return render_template("signup.html", elections=elections)
+    # Pass only scheduled elections data for candidate signup option
+    all_elections = query("SELECT * FROM elections WHERE status != 'cancelled' OR status IS NULL ORDER BY start_time DESC")
+    now = now_utc()
+    scheduled_elections = []
+    for e in all_elections:
+        start_time = parse_iso(e['start_time'])
+        if start_time and start_time > now:
+            scheduled_elections.append(e)
+    
+    return render_template("signup.html", elections=scheduled_elections)
 
 @app.route("/login", methods=["GET","POST"])
 def login():
@@ -480,8 +487,17 @@ def candidate_signup():
                 (name, email.lower() if email else None, username, generate_password_hash(password), 'candidate'))
         user = query('SELECT * FROM users WHERE lower(username)=?', (username,), one=True)
         user_id = user['id']
-        # prevent duplicate application for same user+election
+        # Check if election has started (prevent registration for ongoing/ended elections)
         if election_id:
+            election = query('SELECT * FROM elections WHERE id=?', (election_id,), one=True)
+            if election:
+                now = now_utc()
+                start_time = parse_iso(election['start_time'])
+                if start_time and start_time <= now:
+                    flash('Registration closed! This election has already started. You can only register for scheduled elections.', 'error')
+                    return redirect(url_for('candidate_signup'))
+            
+            # prevent duplicate application for same user+election
             exists = query('SELECT 1 FROM candidate_applications WHERE user_id=? AND election_id=? AND status IN ("pending","approved")', (user_id, election_id), one=True)
             if exists:
                 flash('You have already applied for this election.', 'warn'); return redirect(url_for('candidate_signup'))
@@ -508,8 +524,16 @@ def candidate_signup():
         execute('INSERT INTO candidate_applications (user_id,election_id,name,category,photo,status,applied_at) VALUES (?,?,?,?,?,?,?)',
                 (user_id, election_id, name, category, photo_path, 'pending', applied_at))
         flash('Application submitted. Awaiting admin approval.', 'ok'); return redirect(url_for('login'))
-    elections = query("SELECT * FROM elections WHERE status != 'cancelled' OR status IS NULL ORDER BY start_time DESC")
-    return render_template('candidate_signup.html', elections=elections)
+    # Only show scheduled elections (not started yet)
+    all_elections = query("SELECT * FROM elections WHERE status != 'cancelled' OR status IS NULL ORDER BY start_time DESC")
+    now = now_utc()
+    scheduled_elections = []
+    for e in all_elections:
+        start_time = parse_iso(e['start_time'])
+        if start_time and start_time > now:
+            scheduled_elections.append(e)
+    
+    return render_template('candidate_signup.html', elections=scheduled_elections)
 
 
 @app.route('/candidate/profile')

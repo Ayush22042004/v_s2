@@ -52,6 +52,33 @@
           </div>
         </div>
 
+        <!-- Registration Status Info -->
+        {% if not elections %}
+        <div class="mb-6 glass-effect rounded-xl p-4 border border-yellow-500/30 bg-yellow-500/5">
+          <div class="flex items-start space-x-3">
+            <div class="w-10 h-10 bg-yellow-500/20 rounded-xl flex items-center justify-center flex-shrink-0">
+              <i class="fas fa-clock text-yellow-400"></i>
+            </div>
+            <div>
+              <h4 class="text-yellow-400 font-semibold mb-1">No Elections Available</h4>
+              <p class="text-sm text-gray-300">Currently, there are no upcoming elections open for candidate registration. All active elections have already started and registration is now closed.</p>
+            </div>
+          </div>
+        </div>
+        {% else %}
+        <div class="mb-6 glass-effect rounded-xl p-4 border border-blue-500/30 bg-blue-500/5">
+          <div class="flex items-start space-x-3">
+            <div class="w-10 h-10 bg-blue-500/20 rounded-xl flex items-center justify-center flex-shrink-0">
+              <i class="fas fa-info-circle text-blue-400"></i>
+            </div>
+            <div>
+              <h4 class="text-blue-400 font-semibold mb-1">Registration Open</h4>
+              <p class="text-sm text-gray-300">You can register for scheduled elections. Registration automatically closes when an election starts.</p>
+            </div>
+          </div>
+        </div>
+        {% endif %}
+
         <form method="POST" enctype="multipart/form-data" id="candidateForm" class="space-y-8">
           
           <!-- Personal Information Section -->
@@ -222,14 +249,21 @@
                   >
                     <option value="" class="bg-navy-dark">Select specific election (optional)</option>
                     {% for e in elections %}
-                    <option value="{{ e.id }}" class="bg-navy-dark">{{ e.title or e.category }} - {{ e.year }}</option>
+                    <option value="{{ e.id }}" class="bg-navy-dark">{{ e.title or e.category }} - Starts {{ e.start_time[:10] }}</option>
                     {% endfor %}
                   </select>
                   <div class="absolute inset-y-0 right-0 pr-4 flex items-center pointer-events-none">
                     <i class="fas fa-chevron-down text-gray-400"></i>
                   </div>
                 </div>
-                <p class="text-xs text-gray-400">Leave empty to apply for any future elections</p>
+                {% if elections %}
+                <p class="text-xs text-gray-400">Only scheduled elections are shown. Registration closes once an election starts.</p>
+                {% else %}
+                <p class="text-xs text-yellow-400">
+                  <i class="fas fa-info-circle mr-1"></i>
+                  No upcoming elections available for registration. All current elections have already started.
+                </p>
+                {% endif %}
               </div>
 
               <!-- Profile Photo -->
